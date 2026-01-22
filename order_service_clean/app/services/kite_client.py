@@ -843,6 +843,11 @@ async def get_kite_client_for_user(user_id: str) -> Optional[KiteOrderClient]:
         
         return client
         
+    except (ConnectionError, TimeoutError) as e:
+        logger.error(f"Connection error getting kite client for user {user_id}: {e}")
+        from ..exceptions import ServiceUnavailableError
+        raise ServiceUnavailableError(f"Unable to connect to broker service: {e}")
     except Exception as e:
         logger.error(f"Failed to get kite client for user {user_id}: {e}")
-        return None
+        from ..exceptions import BrokerAPIError
+        raise BrokerAPIError(f"Failed to initialize broker client: {e}")

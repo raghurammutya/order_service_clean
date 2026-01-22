@@ -59,9 +59,14 @@ class PnLCalculator:
             logger.debug(f"Realized P&L for strategy {strategy_id}: {realized_pnl}")
             return realized_pnl
 
+        except (ConnectionError, TimeoutError) as e:
+            logger.error(f"Database connection error calculating realized P&L for strategy {strategy_id}: {e}")
+            from ..exceptions import DatabaseError
+            raise DatabaseError(f"Unable to calculate realized P&L due to database connection error: {e}")
         except Exception as e:
-            logger.error(f"Error calculating realized P&L for strategy {strategy_id}: {e}")
-            return Decimal('0')
+            logger.error(f"CRITICAL: Error calculating realized P&L for strategy {strategy_id}: {e}")
+            from ..exceptions import OrderServiceError
+            raise OrderServiceError(f"P&L calculation failed for strategy {strategy_id}: {e}")
 
     async def calculate_unrealized_pnl(self, strategy_id: int, trading_day: Optional[date] = None) -> Decimal:
         """
@@ -96,9 +101,14 @@ class PnLCalculator:
             logger.debug(f"Unrealized P&L for strategy {strategy_id}: {unrealized_pnl}")
             return unrealized_pnl
 
+        except (ConnectionError, TimeoutError) as e:
+            logger.error(f"Database connection error calculating unrealized P&L for strategy {strategy_id}: {e}")
+            from ..exceptions import DatabaseError
+            raise DatabaseError(f"Unable to calculate unrealized P&L due to database connection error: {e}")
         except Exception as e:
-            logger.error(f"Error calculating unrealized P&L for strategy {strategy_id}: {e}")
-            return Decimal('0')
+            logger.error(f"CRITICAL: Error calculating unrealized P&L for strategy {strategy_id}: {e}")
+            from ..exceptions import OrderServiceError
+            raise OrderServiceError(f"Unrealized P&L calculation failed for strategy {strategy_id}: {e}")
 
     async def calculate_trade_metrics(
         self,
@@ -196,9 +206,14 @@ class PnLCalculator:
                 "closed_positions": row.closed_positions if row else 0
             }
 
+        except (ConnectionError, TimeoutError) as e:
+            logger.error(f"Database connection error calculating position counts for strategy {strategy_id}: {e}")
+            from ..exceptions import DatabaseError
+            raise DatabaseError(f"Unable to calculate position counts due to database connection error: {e}")
         except Exception as e:
-            logger.error(f"Error calculating position counts for strategy {strategy_id}: {e}")
-            return {"open_positions": 0, "closed_positions": 0}
+            logger.error(f"CRITICAL: Error calculating position counts for strategy {strategy_id}: {e}")
+            from ..exceptions import OrderServiceError
+            raise OrderServiceError(f"Position count calculation failed for strategy {strategy_id}: {e}")
 
     async def calculate_win_rate(self, winning_trades: int, losing_trades: int) -> Decimal:
         """
