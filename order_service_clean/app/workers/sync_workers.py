@@ -147,9 +147,12 @@ class SyncWorkerManager:
             )
             await self.redis_client.ping()
             logger.info("✓ Redis connection established for WebSocket order updates")
+        except (ConnectionError, TimeoutError, OSError) as e:
+            logger.error(f"Failed to connect to Redis due to network error: {e}")
+            logger.warning("WebSocket order updates will be disabled due to Redis connectivity issues")
         except Exception as e:
-            logger.error(f"Failed to connect to Redis: {e}")
-            logger.warning("WebSocket order updates will be disabled")
+            logger.error(f"Failed to connect to Redis due to configuration error: {e}")
+            logger.warning("WebSocket order updates will be disabled due to Redis configuration issues")
 
         # Start WebSocket listener (for real-time order updates during market hours)
         if self.redis_client:
@@ -390,8 +393,14 @@ class SyncWorkerManager:
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse WebSocket order data: {e}")
+        except (ConnectionError, TimeoutError, OSError) as e:
+            logger.error(f"WebSocket order processing failed due to database error: {e}")
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON in WebSocket order update: {e}")
+        except ValueError as e:
+            logger.error(f"Invalid data in WebSocket order update: {e}")
         except Exception as e:
-            logger.error(f"Error processing WebSocket order update: {e}", exc_info=True)
+            logger.critical(f"CRITICAL: Unexpected error processing WebSocket order update: {e}", exc_info=True)
 
     async def _update_order_from_websocket(
         self,
@@ -476,8 +485,12 @@ class SyncWorkerManager:
                                 f"qty={position.quantity} pnl={position.total_pnl} "
                                 f"strategy_id={position.strategy_id}"
                             )
+                    except (ConnectionError, TimeoutError, OSError) as e:
+                        logger.error(f"Failed to update position from order due to database error: {e}")
+                    except ValueError as e:
+                        logger.error(f"Failed to update position from order due to data validation error: {e}")
                     except Exception as e:
-                        logger.error(f"Failed to update position from order: {e}", exc_info=True)
+                        logger.critical(f"CRITICAL: Unexpected error updating position from order: {e}", exc_info=True)
 
                 elif product_type == "CNC":
                     # Update holding
@@ -490,8 +503,12 @@ class SyncWorkerManager:
                                 f"Holding updated from order: {holding_result['symbol']} "
                                 f"action={holding_result['action']}"
                             )
+                    except (ConnectionError, TimeoutError, OSError) as e:
+                        logger.error(f"Failed to update holding from order due to database error: {e}")
+                    except ValueError as e:
+                        logger.error(f"Failed to update holding from order due to data validation error: {e}")
                     except Exception as e:
-                        logger.error(f"Failed to update holding from order: {e}", exc_info=True)
+                        logger.critical(f"CRITICAL: Unexpected error updating holding from order: {e}", exc_info=True)
 
                 # Phase 2: Update P&L metrics for strategy when order completes
                 try:
@@ -503,19 +520,36 @@ class SyncWorkerManager:
                         logger.info(f"✅ P&L metrics updated for strategy {order.strategy_id}")
                     else:
                         logger.warning(f"⚠️  Failed to update P&L metrics for strategy {order.strategy_id}")
+                except (ConnectionError, TimeoutError, OSError) as e:
+                    logger.error(f"Failed to update P&L metrics for strategy {order.strategy_id} due to database error: {e}")
                 except Exception as e:
-                    logger.error(f"Error updating P&L metrics for strategy {order.strategy_id}: {e}", exc_info=True)
+                    logger.critical(f"CRITICAL: Unexpected error updating P&L metrics for strategy {order.strategy_id}: {e}", exc_info=True)
 
                 # Create trade record from completed order
                 try:
                     await self._create_trade_from_order(session, order, order_data)
+                except (ConnectionError, TimeoutError, OSError) as e:
+                    logger.error(f"Failed to create trade from order due to database error: {e}")
+                except ValueError as e:
+                    logger.error(f"Failed to create trade from order due to data validation error: {e}")
                 except Exception as e:
-                    logger.error(f"Failed to create trade from order: {e}", exc_info=True)
+                    logger.critical(f"CRITICAL: Unexpected error creating trade from order: {e}", exc_info=True)
 
-        except Exception as e:
-            logger.error(f"Failed to update order from websocket: {e}", exc_info=True)
+        except (ConnectionError, TimeoutError, OSError) as e:
+            logger.error(f"Failed to update order from websocket due to database error: {e}")
             await session.rollback()
-            raise
+            from ..exceptions import DatabaseError
+            raise DatabaseError(f"WebSocket order update failed due to database error: {e}")
+        except ValueError as e:
+            logger.error(f"Failed to update order from websocket due to validation error: {e}")
+            await session.rollback()
+            from ..exceptions import ValidationError
+            raise ValidationError(f"WebSocket order update failed due to invalid data: {e}")
+        except Exception as e:
+            logger.critical(f"CRITICAL: Unexpected error updating order from websocket: {e}", exc_info=True)
+            await session.rollback()
+            from ..exceptions import OrderServiceError
+            raise OrderServiceError(f"Critical websocket order update failure: {e}")
 
     async def _create_trade_from_order(
         self,
@@ -559,7 +593,11 @@ class SyncWorkerManager:
                 from dateutil import parser
                 try:
                     trade_time = parser.parse(trade_time)
-                except Exception:
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Failed to parse trade timestamp, using current time: {e}")
+                    trade_time = datetime.utcnow()
+                except Exception as e:
+                    logger.error(f"Unexpected error parsing trade timestamp: {e}")
                     trade_time = datetime.utcnow()
             elif trade_time is None:
                 trade_time = datetime.utcnow()
