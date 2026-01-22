@@ -955,9 +955,14 @@ class SyncWorkerManager:
             except asyncio.CancelledError:
                 logger.info("Trade sync worker cancelled")
                 break
-            except Exception as e:
-                logger.error(f"Error in trade sync worker: {e}", exc_info=True)
+            except (ConnectionError, TimeoutError, asyncio.TimeoutError) as e:
+                logger.warning(f"Network error in trade sync, retrying: {e}")
                 await asyncio.sleep(60)
+            except Exception as e:
+                logger.critical(f"CRITICAL: Unexpected error in trade sync worker: {e}", exc_info=True)
+                logger.critical("Trade sync worker shutting down for safety")
+                self.is_running = False
+                raise
 
     async def _position_validation_worker(self):
         """
@@ -1021,9 +1026,14 @@ class SyncWorkerManager:
             except asyncio.CancelledError:
                 logger.info("Position validation worker cancelled")
                 break
-            except Exception as e:
-                logger.error(f"Error in position validation worker: {e}", exc_info=True)
+            except (ConnectionError, TimeoutError, asyncio.TimeoutError) as e:
+                logger.warning(f"Network error in position validation, retrying: {e}")
                 await asyncio.sleep(300)  # Wait before retrying
+            except Exception as e:
+                logger.critical(f"CRITICAL: Unexpected error in position validation worker: {e}", exc_info=True)
+                logger.critical("Position validation worker shutting down for safety")
+                self.is_running = False
+                raise
 
     async def _holdings_daily_sync_worker(self):
         """
@@ -1167,9 +1177,14 @@ class SyncWorkerManager:
             except asyncio.CancelledError:
                 logger.info("Margin polling worker cancelled")
                 break
-            except Exception as e:
-                logger.error(f"Error in margin polling worker: {e}", exc_info=True)
+            except (ConnectionError, TimeoutError, asyncio.TimeoutError) as e:
+                logger.warning(f"Network error in margin polling, retrying: {e}")
                 await asyncio.sleep(60)  # Wait before retrying
+            except Exception as e:
+                logger.critical(f"CRITICAL: Unexpected error in margin polling worker: {e}", exc_info=True)
+                logger.critical("Margin polling worker shutting down for safety")
+                self.is_running = False
+                raise
 
     async def _tier_calculation_worker(self):
         """

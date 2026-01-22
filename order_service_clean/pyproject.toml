@@ -16,10 +16,14 @@ extend-select = [
 ]
 
 [tool.ruff.per-file-ignores]
-# Allow broader exception handling in specific contexts where it's safe
-"app/workers/*" = ["BLE001"]  # Workers need some catch-all for stability
-"*/test_*.py" = ["BLE001"]    # Tests can catch all exceptions
-"scripts/*" = ["BLE001"]      # Scripts can have broad error handling
+# Strict exception handling for critical modules
+"app/services/kite_client*.py" = []  # No broad exception handling in order processing
+"app/api/v1/endpoints/*.py" = []     # No broad exception handling in API endpoints
+
+# Allow some broader patterns only where justified
+"*/test_*.py" = ["BLE001"]           # Tests can catch all exceptions
+"scripts/*" = ["BLE001"]             # Scripts can have broad error handling
+"app/workers/*" = []                 # Workers must use specific exception handling
 
 [tool.ruff.flake8-bugbear]
 # Additional bugbear configuration

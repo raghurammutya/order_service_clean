@@ -291,6 +291,21 @@ class KiteOrderClient:
             logger.info(f"Order placed successfully: {order_id}")
             return order_id
 
+        except KeyError as e:
+            logger.error(f"Order placement failed due to missing parameter: {e}")
+            from ..exceptions import ValidationError
+            raise ValidationError(f"Missing required order parameter: {e}")
+            
+        except ValueError as e:
+            logger.error(f"Order placement failed due to invalid parameter: {e}")
+            from ..exceptions import ValidationError
+            raise ValidationError(f"Invalid order parameter: {e}")
+            
+        except (ConnectionError, TimeoutError) as e:
+            logger.error(f"Order placement failed due to network issue: {e}")
+            from ..exceptions import ServiceUnavailableError
+            raise ServiceUnavailableError(f"Broker service unavailable: {e}")
+            
         except Exception as e:
             logger.error(f"Order placement failed: {e}")
             
@@ -300,7 +315,7 @@ class KiteOrderClient:
                 InsufficientFundsError, InvalidSymbolError
             )
 
-            # Handle specific Kite API errors
+            # Handle specific Kite API errors based on error message
             error_message = str(e).lower()
             
             if any(keyword in error_message for keyword in ["token", "session", "authorization", "authentication"]):
