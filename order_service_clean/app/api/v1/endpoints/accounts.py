@@ -7,7 +7,7 @@ Supports multi-account routing via trading_account_id header.
 import logging
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
@@ -15,7 +15,7 @@ from ....auth import get_current_user, get_trading_account_id
 from ....utils.user_id import extract_user_id
 from ....services.kite_client_multi import get_kite_client_for_account
 from ....services.account_tier_service import (
-    AccountTierService, SyncTier, get_account_tier_info
+    AccountTierService, get_account_tier_info
 )
 from ....services.rate_limiter import get_rate_limiter_with_fallback
 from ....services.order_service import OrderService
@@ -281,7 +281,6 @@ async def get_margins(
     - For All Accounts mode: includes per-account breakdown and aggregated totals
     """
     from ....utils.acl_helpers import ACLHelper
-    from ....services.account_aggregation import get_user_accessible_accounts, aggregate_margins
 
     user_id = extract_user_id(current_user)
 
@@ -512,7 +511,10 @@ async def get_margins(
             query = text("""
                 SELECT
                     p.strategy_id,
-                    COALESCE(s.display_name, s.name, 'Manual') as strategy_name,
+                    CASE 
+                        WHEN p.strategy_id IS NOT NULL THEN CONCAT('Strategy_', p.strategy_id)
+                        ELSE 'Manual'
+                    END as strategy_name,
                     p.exchange,
                     CASE
                         WHEN p.exchange IN ('NSE', 'BSE') THEN 'equity'
@@ -529,11 +531,10 @@ async def get_margins(
                     COUNT(*) as positions_count,
                     SUM(COALESCE(p.unrealized_pnl, 0)) as unrealized_pnl
                 FROM order_service.positions p
-                LEFT JOIN public.strategies s ON p.strategy_id = s.id
                 WHERE p.trading_account_id = :account_id
                 AND p.is_open = true
                 AND p.quantity != 0
-                GROUP BY p.strategy_id, s.display_name, s.name, p.exchange
+                GROUP BY p.strategy_id, p.exchange
                 ORDER BY estimated_margin DESC
             """)
 

@@ -5,9 +5,9 @@ Calculates realized and unrealized P&L for strategies from trades and positions.
 Updates public.strategy_pnl_metrics table in real-time.
 """
 import logging
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -315,37 +315,24 @@ class PnLCalculator:
             start_date = end_date - timedelta(days=30)
 
         try:
-            # Get daily cumulative P&L
-            result = await self.db.execute(
-                text("""
-                    SELECT metric_date, cumulative_pnl
-                    FROM public.strategy_pnl_metrics
-                    WHERE strategy_id = :strategy_id
-                      AND metric_date BETWEEN :start_date AND :end_date
-                    ORDER BY metric_date ASC
-                """),
-                {"strategy_id": strategy_id, "start_date": start_date, "end_date": end_date}
+            from ..clients.analytics_service_client import get_analytics_client
+            
+            # Get max drawdown via Analytics Service API (replaces direct public.strategy_pnl_metrics access)
+            analytics_client = await get_analytics_client()
+            drawdown_data = await analytics_client.get_max_drawdown(
+                strategy_id=strategy_id,
+                start_date=start_date,
+                end_date=end_date
             )
-            rows = result.fetchall()
-
-            if not rows or len(rows) < 2:
+            
+            if not drawdown_data:
                 return Decimal('0')
-
-            # Calculate max drawdown
-            peak = Decimal(str(rows[0].cumulative_pnl))
-            max_dd = Decimal('0')
-
-            for row in rows:
-                cumulative = Decimal(str(row.cumulative_pnl))
-                if cumulative > peak:
-                    peak = cumulative
-
-                if peak > 0:
-                    drawdown = ((peak - cumulative) / peak) * Decimal('100')
-                    if drawdown > max_dd:
-                        max_dd = drawdown
-
-            return max_dd.quantize(Decimal('0.01'))
+            
+            max_drawdown = drawdown_data.get("max_drawdown")
+            if max_drawdown is not None:
+                return Decimal(str(max_drawdown))
+            
+            return Decimal('0')
 
         except Exception as e:
             logger.error(f"Error calculating max drawdown: {e}")
@@ -444,7 +431,7 @@ class PnLCalculator:
         trading_day: Optional[date] = None
     ) -> bool:
         """
-        Update public.strategy_pnl_metrics table with current P&L and metrics.
+        Update strategy P&L metrics via Analytics Service API.
 
         This is the main method called after order completion to update all metrics.
 
@@ -493,112 +480,47 @@ class PnLCalculator:
             sharpe_ratio = Decimal('0')
             sortino_ratio = Decimal('0')
 
-            # Update order_service.strategy_pnl_metrics table with ALL metrics
-            await self.db.execute(
-                text("""
-                    INSERT INTO public.strategy_pnl_metrics (
-                        strategy_id,
-                        metric_date,
-                        day_pnl,
-                        cumulative_pnl,
-                        realized_pnl,
-                        unrealized_pnl,
-                        open_positions,
-                        closed_positions,
-                        total_trades,
-                        winning_trades,
-                        losing_trades,
-                        win_rate,
-                        avg_position_size,
-                        capital_deployed,
-                        margin_used,
-                        max_drawdown,
-                        sharpe_ratio,
-                        sortino_ratio,
-                        max_consecutive_losses,
-                        roi_percent,
-                        last_calculated_at,
-                        created_at,
-                        updated_at
-                    ) VALUES (
-                        :strategy_id,
-                        :metric_date,
-                        :day_pnl,
-                        :cumulative_pnl,
-                        :realized_pnl,
-                        :unrealized_pnl,
-                        :open_positions,
-                        :closed_positions,
-                        :total_trades,
-                        :winning_trades,
-                        :losing_trades,
-                        :win_rate,
-                        :avg_position_size,
-                        :capital_deployed,
-                        :margin_used,
-                        :max_drawdown,
-                        :sharpe_ratio,
-                        :sortino_ratio,
-                        :max_consecutive_losses,
-                        :roi_percent,
-                        NOW(),
-                        NOW(),
-                        NOW()
-                    )
-                    ON CONFLICT (strategy_id, metric_date)
-                    DO UPDATE SET
-                        day_pnl = EXCLUDED.day_pnl,
-                        cumulative_pnl = EXCLUDED.cumulative_pnl,
-                        realized_pnl = EXCLUDED.realized_pnl,
-                        unrealized_pnl = EXCLUDED.unrealized_pnl,
-                        open_positions = EXCLUDED.open_positions,
-                        closed_positions = EXCLUDED.closed_positions,
-                        total_trades = EXCLUDED.total_trades,
-                        winning_trades = EXCLUDED.winning_trades,
-                        losing_trades = EXCLUDED.losing_trades,
-                        win_rate = EXCLUDED.win_rate,
-                        avg_position_size = EXCLUDED.avg_position_size,
-                        capital_deployed = EXCLUDED.capital_deployed,
-                        margin_used = EXCLUDED.margin_used,
-                        max_drawdown = EXCLUDED.max_drawdown,
-                        sharpe_ratio = EXCLUDED.sharpe_ratio,
-                        sortino_ratio = EXCLUDED.sortino_ratio,
-                        max_consecutive_losses = EXCLUDED.max_consecutive_losses,
-                        roi_percent = EXCLUDED.roi_percent,
-                        last_calculated_at = NOW(),
-                        updated_at = NOW()
-                """),
-                {
-                    "strategy_id": strategy_id,
-                    "metric_date": trading_day,
-                    "day_pnl": float(day_pnl),
-                    "cumulative_pnl": float(total_pnl),
-                    "realized_pnl": float(realized_pnl),
-                    "unrealized_pnl": float(unrealized_pnl),
-                    "open_positions": position_counts["open_positions"],
-                    "closed_positions": position_counts["closed_positions"],
-                    "total_trades": trade_metrics["total_trades"],
-                    "winning_trades": trade_metrics["winning_trades"],
-                    "losing_trades": trade_metrics["losing_trades"],
-                    "win_rate": float(win_rate),
-                    "avg_position_size": float(avg_position_size),
-                    "capital_deployed": float(capital_deployed),
-                    "margin_used": float(margin_used),
-                    "max_drawdown": float(max_drawdown),
-                    "sharpe_ratio": float(sharpe_ratio),
-                    "sortino_ratio": float(sortino_ratio),
-                    "max_consecutive_losses": max_consecutive_losses,
-                    "roi_percent": float(roi_percent),
-                }
+            from ..clients.analytics_service_client import get_analytics_client
+            
+            # Prepare comprehensive P&L data for Analytics Service API
+            pnl_data = {
+                "day_pnl": float(day_pnl),
+                "cumulative_pnl": float(total_pnl),
+                "realized_pnl": float(realized_pnl),
+                "unrealized_pnl": float(unrealized_pnl),
+                "open_positions": position_counts["open_positions"],
+                "closed_positions": position_counts["closed_positions"],
+                "total_trades": trade_metrics["total_trades"],
+                "winning_trades": trade_metrics["winning_trades"],
+                "losing_trades": trade_metrics["losing_trades"],
+                "win_rate": float(win_rate),
+                "avg_position_size": float(avg_position_size),
+                "capital_deployed": float(capital_deployed),
+                "margin_used": float(margin_used),
+                "max_drawdown": float(max_drawdown),
+                "sharpe_ratio": float(sharpe_ratio),
+                "sortino_ratio": float(sortino_ratio),
+                "max_consecutive_losses": max_consecutive_losses,
+                "roi_percent": float(roi_percent),
+            }
+            
+            # Send to Analytics Service API (replaces direct public.strategy_pnl_metrics access)
+            analytics_client = await get_analytics_client()
+            success = await analytics_client.calculate_and_store_pnl_metrics(
+                strategy_id=str(strategy_id),
+                metric_date=trading_day,
+                pnl_data=pnl_data
             )
-
-            await self.db.commit()
-
-            logger.info(
-                f"✅ Updated P&L metrics for strategy {strategy_id}: "
-                f"Realized={realized_pnl}, Unrealized={unrealized_pnl}, Total={total_pnl}"
-            )
-            return True
+            
+            if success:
+                logger.info(
+                    f"✅ Updated P&L metrics for strategy {strategy_id}: "
+                    f"Realized={realized_pnl}, Unrealized={unrealized_pnl}, Total={total_pnl}"
+                )
+                return True
+            else:
+                logger.error(f"Analytics Service failed to store P&L metrics for strategy {strategy_id}")
+                return False
 
         except Exception as e:
             logger.error(f"Error updating P&L metrics for strategy {strategy_id}: {e}", exc_info=True)
@@ -617,19 +539,15 @@ class PnLCalculator:
             Previous cumulative P&L as Decimal (0 if not found)
         """
         try:
-            result = await self.db.execute(
-                text("""
-                    SELECT cumulative_pnl
-                    FROM public.strategy_pnl_metrics
-                    WHERE strategy_id = :strategy_id
-                      AND metric_date < :trading_day
-                    ORDER BY metric_date DESC
-                    LIMIT 1
-                """),
-                {"strategy_id": strategy_id, "trading_day": trading_day}
+            from ..clients.analytics_service_client import get_analytics_client
+            
+            # Get previous cumulative P&L via Analytics Service API
+            analytics_client = await get_analytics_client()
+            previous_pnl = await analytics_client.get_previous_cumulative_pnl(
+                strategy_id=str(strategy_id),
+                before_date=trading_day
             )
-            row = result.fetchone()
-            return Decimal(str(row.cumulative_pnl)) if row else Decimal('0')
+            return previous_pnl if previous_pnl is not None else Decimal('0')
 
         except Exception as e:
             logger.error(f"Error getting previous cumulative P&L: {e}")

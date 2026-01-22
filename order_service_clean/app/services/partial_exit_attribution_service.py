@@ -13,7 +13,7 @@ Key Features:
 """
 
 import logging
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 from decimal import Decimal
 from dataclasses import dataclass
@@ -320,6 +320,8 @@ class PartialExitAttributionService:
         Returns:
             List of position dictionaries with strategy and execution info
         """
+        # Get positions without strategy JOIN (since public.strategy doesn't exist)
+        # CRITICAL: public.strategy table doesn't exist in order_service database
         result = await self.db.execute(
             text("""
                 SELECT 
@@ -333,8 +335,6 @@ class PartialExitAttributionService:
                     p.last_price,
                     p.created_at,
                     p.updated_at,
-                    s.strategy_name,
-                    s.is_default,
                     -- Get entry trades for FIFO/LIFO ordering
                     (
                         SELECT json_agg(
@@ -355,11 +355,11 @@ class PartialExitAttributionService:
                               END
                     ) as entry_trades
                 FROM order_service.positions p
-                JOIN public.strategy s ON s.strategy_id = p.strategy_id
                 WHERE p.trading_account_id = :trading_account_id
                   AND p.symbol = :symbol
                   AND p.is_open = true
                   AND p.quantity != 0
+                  AND p.strategy_id IS NOT NULL
                 ORDER BY p.created_at ASC  -- Oldest positions first for FIFO
             """),
             {
@@ -381,9 +381,8 @@ class PartialExitAttributionService:
                 "last_price": row[7],
                 "created_at": row[8],
                 "updated_at": row[9],
-                "strategy_name": row[10],
-                "is_default": row[11],
-                "entry_trades": row[12] or []
+                "entry_trades": row[10] or []
+                # strategy_name and is_default removed since we no longer JOIN strategy
             }
             positions.append(position_data)
 

@@ -287,41 +287,73 @@ async def aggregate_holdings(db: AsyncSession, account_ids: List[int]) -> dict:
         }
 
     try:
-        # Convert int IDs to strings (trading_account_id is VARCHAR)
-        account_ids_str = [str(id) for id in account_ids]
+        # Get holdings from Account Service API instead of direct database access
+        from ..clients.account_service_client import get_account_client
+        
+        account_client = await get_account_client()
+        all_holdings = []
+        
+        # Fetch holdings for each account via API
+        for account_id in account_ids:
+            try:
+                account_holdings = await account_client.get_holdings(str(account_id))
+                for holding in account_holdings:
+                    holding["trading_account_id"] = str(account_id)
+                    all_holdings.append(holding)
+            except Exception as e:
+                logger.warning(f"Failed to get holdings for account {account_id}: {e}")
+                continue
+        
+        # Aggregate holdings by symbol and exchange
+        aggregated_holdings = {}
+        for holding in all_holdings:
+            symbol = holding.get("symbol", holding.get("tradingsymbol", ""))
+            exchange = holding.get("exchange", "")
+            key = f"{symbol}:{exchange}"
+            
+            if key not in aggregated_holdings:
+                aggregated_holdings[key] = {
+                    "symbol": symbol,
+                    "exchange": exchange,
+                    "quantity": 0,
+                    "collateral_quantity": 0,
+                    "average_price": 0.0,
+                    "last_price": 0.0,
+                    "pnl": 0.0,
+                    "accounts": [],
+                    "is_aggregated": True,
+                    "total_value": 0.0
+                }
+            
+            # Aggregate values
+            agg = aggregated_holdings[key]
+            quantity = holding.get("quantity", 0)
+            collateral_qty = holding.get("collateral_quantity", 0)
+            avg_price = holding.get("average_price", 0) or 0
+            last_price = holding.get("last_price", 0) or 0
+            pnl = holding.get("pnl", 0) or 0
+            account_id = holding.get("trading_account_id")
+            
+            agg["quantity"] += quantity
+            agg["collateral_quantity"] += collateral_qty
+            agg["pnl"] += pnl
+            agg["last_price"] = last_price  # Use latest price
+            if account_id and account_id not in agg["accounts"]:
+                agg["accounts"].append(account_id)
+                
+            # Calculate weighted average price
+            if quantity > 0 and avg_price > 0:
+                total_value = agg["total_value"] + (quantity * avg_price)
+                total_qty = sum(h.get("quantity", 0) for h in all_holdings 
+                               if (h.get("symbol", h.get("tradingsymbol", "")) == symbol and 
+                                   h.get("exchange", "") == exchange))
+                if total_qty > 0:
+                    agg["average_price"] = total_value / total_qty
+                agg["total_value"] = total_value
 
-        # Holdings are in public.holdings table
-        query = text("""
-            SELECT symbol,
-                exchange,
-                SUM(quantity) as total_quantity,
-                SUM(collateral_quantity) as total_collateral_quantity,
-                AVG(average_price) as avg_price,
-                MAX(last_price) as last_price,
-                SUM(pnl) as total_pnl,
-                ARRAY_AGG(DISTINCT trading_account_id) as account_ids
-            FROM public.holdings
-            WHERE trading_account_id = ANY(:account_ids)
-            GROUP BY tradingsymbol, exchange
-            HAVING SUM(quantity) > 0
-        """)
-
-        result = await db.execute(query, {"account_ids": account_ids_str})
-        rows = result.fetchall()
-
-        holdings = []
-        for row in rows:
-            holdings.append({
-                "symbol": row.tradingsymbol,
-                "exchange": row.exchange,
-                "quantity": int(row.total_quantity),
-                "collateral_quantity": int(row.total_collateral_quantity or 0),
-                "average_price": float(row.avg_price) if row.avg_price else None,
-                "last_price": float(row.last_price) if row.last_price else None,
-                "pnl": float(row.total_pnl or 0),
-                "accounts": row.account_ids,
-                "is_aggregated": True
-            })
+        # Filter out zero quantity holdings and convert to list
+        holdings = [holding for holding in aggregated_holdings.values() 
+                   if holding["quantity"] > 0]
 
         return {
             "holdings": holdings,
@@ -548,7 +580,10 @@ async def aggregate_margins(
             query = text("""
                 SELECT
                     p.strategy_id,
-                    COALESCE(s.display_name, s.name, 'Manual') as strategy_name,
+                    CASE 
+                        WHEN p.strategy_id IS NOT NULL THEN CONCAT('Strategy_', p.strategy_id)
+                        ELSE 'Manual'
+                    END as strategy_name,
                     p.exchange,
                     CASE
                         WHEN p.exchange IN ('NSE', 'BSE') THEN 'equity'
@@ -566,11 +601,10 @@ async def aggregate_margins(
                     SUM(COALESCE(p.unrealized_pnl, 0)) as unrealized_pnl,
                     ARRAY_AGG(DISTINCT p.trading_account_id) as account_ids
                 FROM order_service.positions p
-                LEFT JOIN public.strategies s ON p.strategy_id = s.id
                 WHERE p.trading_account_id = ANY(:account_ids)
                 AND p.is_open = true
                 AND p.quantity != 0
-                GROUP BY p.strategy_id, s.display_name, s.name, p.exchange
+                GROUP BY p.strategy_id, p.exchange
                 ORDER BY estimated_margin DESC
             """)
 

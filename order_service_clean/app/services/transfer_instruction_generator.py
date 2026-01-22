@@ -14,7 +14,7 @@ Key Features:
 """
 
 import logging
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 from decimal import Decimal
 from dataclasses import dataclass
@@ -525,10 +525,8 @@ class TransferInstructionGenerator:
                     p.symbol,
                     p.quantity,
                     p.strategy_id,
-                    p.portfolio_id,
-                    s.strategy_name
+                    p.portfolio_id
                 FROM order_service.positions p
-                LEFT JOIN public.strategy s ON s.strategy_id = p.strategy_id
                 WHERE p.execution_id = :execution_id::uuid
                   AND p.is_open = true
                   AND p.quantity > 0
@@ -538,13 +536,17 @@ class TransferInstructionGenerator:
 
         positions = []
         for row in result.fetchall():
+            strategy_id = row[3]
+            # Generate strategy name without cross-schema access
+            strategy_name = f"Strategy_{strategy_id}" if strategy_id else "Manual"
+            
             positions.append({
                 "position_id": row[0],
                 "symbol": row[1],
                 "quantity": row[2],
-                "strategy_id": row[3],
+                "strategy_id": strategy_id,
                 "portfolio_id": row[4],
-                "strategy_name": row[5]
+                "strategy_name": strategy_name
             })
 
         return positions
