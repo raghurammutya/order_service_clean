@@ -147,7 +147,7 @@ async def list_positions(
     - **aggregated**: True if data is from multiple accounts
     - **account_count**: Number of accounts aggregated (if applicable)
     """
-    from ....services.account_aggregation import get_user_accessible_accounts, aggregate_positions as agg_positions
+    from ....services.account_aggregation import aggregate_positions as agg_positions
 
     user_id = extract_user_id(current_user)
 
@@ -279,7 +279,7 @@ async def get_position_summary(
     - Cache key includes filters (Issue #426)
     """
     from ....database.redis_client import get_redis
-    from ....services.account_aggregation import get_user_accessible_accounts, aggregate_positions as agg_positions
+    from ....services.account_aggregation import aggregate_positions as agg_positions
     import json
 
     user_id = extract_user_id(current_user)
@@ -359,8 +359,10 @@ async def get_position_summary(
         if cached_data:
             logger.info(f"Returning cached positions summary for key {cache_key}")
             return PositionSummaryResponse(**json.loads(cached_data))
+    except (ConnectionError, TimeoutError, OSError) as e:
+        logger.warning(f"Redis cache unavailable for positions summary, proceeding without cache: {e}")
     except Exception as e:
-        logger.warning(f"Redis cache check failed for positions summary: {e}")
+        logger.error(f"Unexpected Redis error for positions summary cache check: {e}")
 
     # Fetch from database with filters
     service = PositionService(db, user_id, trading_account_id)
@@ -374,8 +376,10 @@ async def get_position_summary(
     try:
         await redis.setex(cache_key, 300, json.dumps(summary, default=str))
         logger.info(f"Cached positions summary for key {cache_key}")
+    except (ConnectionError, TimeoutError, OSError) as e:
+        logger.warning(f"Failed to cache positions summary due to Redis connectivity: {e}")
     except Exception as e:
-        logger.warning(f"Failed to cache positions summary: {e}")
+        logger.error(f"Unexpected error caching positions summary: {e}")
 
     return PositionSummaryResponse(**summary)
 
@@ -422,7 +426,7 @@ async def get_pnl_summary(
 
     # Query P&L from positions using ORM
     from ....models.position import Position
-    from sqlalchemy import func, and_
+    from sqlalchemy import and_
 
     # Build filters (trading_account_id is VARCHAR in DB, so cast to string)
     filters = [

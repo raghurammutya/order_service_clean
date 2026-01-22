@@ -135,7 +135,7 @@ async def list_trades(
     - **limit**: Maximum number of trades to return
     - **offset**: Number of trades to skip for pagination
     """
-    from ....services.account_aggregation import get_user_accessible_accounts, aggregate_trades
+    from ....services.account_aggregation import aggregate_trades
 
     user_id = extract_user_id(current_user)
 
@@ -302,8 +302,10 @@ async def get_trade_summary(
         if cached_data:
             logger.info(f"Returning cached trades summary for key {cache_key}")
             return TradeSummaryResponse(**json.loads(cached_data))
+    except (ConnectionError, TimeoutError, OSError) as e:
+        logger.warning(f"Redis cache unavailable for trades summary, proceeding without cache: {e}")
     except Exception as e:
-        logger.warning(f"Redis cache check failed for trades summary: {e}")
+        logger.error(f"Unexpected Redis error for trades summary cache check: {e}")
 
     # Fetch from database with filters
     service = TradeService(db, user_id, trading_account_id)
@@ -318,8 +320,10 @@ async def get_trade_summary(
     try:
         await redis.setex(cache_key, 300, json.dumps(summary, default=str))
         logger.info(f"Cached trades summary for key {cache_key}")
+    except (ConnectionError, TimeoutError, OSError) as e:
+        logger.warning(f"Failed to cache trades summary due to Redis connectivity: {e}")
     except Exception as e:
-        logger.warning(f"Failed to cache trades summary: {e}")
+        logger.error(f"Unexpected error caching trades summary: {e}")
 
     return TradeSummaryResponse(**summary)
 

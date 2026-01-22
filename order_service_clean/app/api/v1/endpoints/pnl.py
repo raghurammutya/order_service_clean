@@ -189,11 +189,23 @@ async def calculate_execution_pnl(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid date format: {str(e)}"
         )
+    except (ConnectionError, TimeoutError, OSError) as e:
+        logger.error(f"P&L calculation failed due to database error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="P&L calculation temporarily unavailable due to database connectivity"
+        )
+    except ValueError as e:
+        logger.error(f"P&L calculation failed due to invalid data: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid parameters for P&L calculation: {str(e)}"
+        )
     except Exception as e:
-        logger.error(f"Failed to calculate execution P&L: {e}", exc_info=True)
+        logger.critical(f"CRITICAL: Unexpected P&L calculation failure: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to calculate P&L: {str(e)}"
+            detail="Critical error in P&L calculation - contact support"
         )
 
 
@@ -255,11 +267,23 @@ async def calculate_batch_pnl(
                     trading_day=trading_day
                 )
                 results.append(ExecutionPnLResponse(**result))
-            except Exception as e:
-                logger.error(f"Failed to calculate P&L for execution {execution_id}: {e}")
+            except (ConnectionError, TimeoutError, OSError) as e:
+                logger.error(f"P&L calculation failed for execution {execution_id} due to database error: {e}")
                 errors.append({
                     "execution_id": execution_id,
-                    "error": str(e)
+                    "error": "Database connectivity error during P&L calculation"
+                })
+            except ValueError as e:
+                logger.error(f"P&L calculation failed for execution {execution_id} due to invalid data: {e}")
+                errors.append({
+                    "execution_id": execution_id,
+                    "error": f"Invalid data: {str(e)}"
+                })
+            except Exception as e:
+                logger.critical(f"CRITICAL: Unexpected P&L calculation failure for execution {execution_id}: {e}", exc_info=True)
+                errors.append({
+                    "execution_id": execution_id,
+                    "error": "Critical system error - contact support"
                 })
 
         success_count = len(results)
@@ -284,9 +308,21 @@ async def calculate_batch_pnl(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid date format: {str(e)}"
         )
+    except (ConnectionError, TimeoutError, OSError) as e:
+        logger.error(f"Batch P&L calculation failed due to database error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Batch P&L calculation temporarily unavailable due to database connectivity"
+        )
+    except ValueError as e:
+        logger.error(f"Batch P&L calculation failed due to invalid parameters: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid parameters for batch P&L calculation: {str(e)}"
+        )
     except Exception as e:
-        logger.error(f"Batch P&L calculation failed: {e}", exc_info=True)
+        logger.critical(f"CRITICAL: Unexpected batch P&L calculation failure: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Batch calculation failed: {str(e)}"
+            detail="Critical error in batch P&L calculation - contact support"
         )

@@ -16,13 +16,12 @@ from typing import List, Optional, Dict, Any
 from decimal import Decimal
 from fastapi import APIRouter, Depends, Query, HTTPException, Path
 from pydantic import BaseModel, Field, validator
-from datetime import datetime, timedelta
+from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....auth.gateway_auth import get_current_user
 from ....database.connection import get_db
 from ....services.capital_ledger_service import CapitalLedgerService
-from ....models.capital_ledger import CapitalLedger
 from ....utils.user_id import extract_user_id
 
 logger = logging.getLogger(__name__)
@@ -164,9 +163,15 @@ async def reserve_capital(
         
     except HTTPException:
         raise
+    except (ConnectionError, TimeoutError, OSError) as e:
+        logger.error(f"Capital reservation failed due to database error: {e}")
+        raise HTTPException(503, "Capital reservation temporarily unavailable due to database connectivity")
+    except ValueError as e:
+        logger.error(f"Capital reservation failed due to invalid data: {e}")
+        raise HTTPException(400, f"Invalid capital reservation parameters: {str(e)}")
     except Exception as e:
-        logger.error(f"Failed to reserve capital: {e}")
-        raise HTTPException(500, "Internal server error during capital reservation")
+        logger.critical(f"CRITICAL: Unexpected capital reservation failure: {e}", exc_info=True)
+        raise HTTPException(500, "Critical error in capital reservation - contact support")
 
 
 @router.post("/allocate", response_model=CapitalLedgerResponse)
@@ -204,9 +209,15 @@ async def allocate_capital(
         
     except HTTPException:
         raise
+    except (ConnectionError, TimeoutError, OSError) as e:
+        logger.error(f"Capital allocation failed due to database error: {e}")
+        raise HTTPException(503, "Capital allocation temporarily unavailable due to database connectivity")
+    except ValueError as e:
+        logger.error(f"Capital allocation failed due to invalid data: {e}")
+        raise HTTPException(400, f"Invalid capital allocation parameters: {str(e)}")
     except Exception as e:
-        logger.error(f"Failed to allocate capital: {e}")
-        raise HTTPException(500, "Internal server error during capital allocation")
+        logger.critical(f"CRITICAL: Unexpected capital allocation failure: {e}", exc_info=True)
+        raise HTTPException(500, "Critical error in capital allocation - contact support")
 
 
 @router.post("/release", response_model=CapitalLedgerResponse)
@@ -243,9 +254,15 @@ async def release_capital(
         
     except HTTPException:
         raise
+    except (ConnectionError, TimeoutError, OSError) as e:
+        logger.error(f"Capital release failed due to database error: {e}")
+        raise HTTPException(503, "Capital release temporarily unavailable due to database connectivity")
+    except ValueError as e:
+        logger.error(f"Capital release failed due to invalid data: {e}")
+        raise HTTPException(400, f"Invalid capital release parameters: {str(e)}")
     except Exception as e:
-        logger.error(f"Failed to release capital: {e}")
-        raise HTTPException(500, "Internal server error during capital release")
+        logger.critical(f"CRITICAL: Unexpected capital release failure: {e}", exc_info=True)
+        raise HTTPException(500, "Critical error in capital release - contact support")
 
 
 # ==========================================
@@ -277,9 +294,12 @@ async def get_available_capital(
             "timestamp": datetime.utcnow().isoformat()
         }
         
+    except (ConnectionError, TimeoutError, OSError) as e:
+        logger.error(f"Failed to get available capital due to database error: {e}")
+        raise HTTPException(503, "Capital information temporarily unavailable due to database connectivity")
     except Exception as e:
-        logger.error(f"Failed to get available capital: {e}")
-        raise HTTPException(500, "Internal server error")
+        logger.critical(f"CRITICAL: Unexpected error getting available capital: {e}", exc_info=True)
+        raise HTTPException(500, "Critical error retrieving capital information - contact support")
 
 
 @router.get("/summary/{portfolio_id}", response_model=CapitalSummaryResponse)

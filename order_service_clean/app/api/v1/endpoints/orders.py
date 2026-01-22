@@ -11,12 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date
 
 from ....auth import get_current_user, get_trading_account_id
+from ....security.internal_auth import validate_order_placement, validate_order_modification, validate_order_cancellation
 from ....database import get_db
 from ....services import OrderService
 from ....services.idempotency import get_idempotency_service
 from ....utils.user_id import extract_user_id
 from ....utils.acl_helpers import ACLHelper
-from ....services.market_hours import MarketHoursService, MarketSegment
+from ....services.market_hours import MarketHoursService
 from ..schemas import (
     PlaceOrderRequest,
     ModifyOrderRequest,
@@ -63,7 +64,8 @@ async def place_order(
     current_user: dict = Depends(get_current_user),
     trading_account_id: int = Depends(get_trading_account_id),
     db: AsyncSession = Depends(get_db),
-    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    service_identity: str = Depends(validate_order_placement)  # Enhanced security
 ):
     """
     Place a new order.
@@ -465,8 +467,10 @@ async def get_orders_summary(
         if cached_data:
             logger.info(f"Returning cached orders summary for key {cache_key}")
             return OrdersSummaryResponse(**json.loads(cached_data))
+    except (ConnectionError, TimeoutError, OSError) as e:
+        logger.warning(f"Redis cache unavailable for orders summary, proceeding without cache: {e}")
     except Exception as e:
-        logger.warning(f"Redis cache check failed for orders summary: {e}")
+        logger.error(f"Unexpected Redis error for orders summary cache check: {e}")
 
     # Query orders for today with status aggregation
     from ....models.order import Order
@@ -514,8 +518,10 @@ async def get_orders_summary(
     try:
         await redis.setex(cache_key, 300, json.dumps(response_data))
         logger.info(f"Cached orders summary for key {cache_key}")
+    except (ConnectionError, TimeoutError, OSError) as e:
+        logger.warning(f"Failed to cache orders summary due to Redis connectivity: {e}")
     except Exception as e:
-        logger.warning(f"Failed to cache orders summary: {e}")
+        logger.error(f"Unexpected error caching orders summary: {e}")
 
     return OrdersSummaryResponse(**response_data)
 
