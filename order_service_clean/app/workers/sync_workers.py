@@ -308,9 +308,12 @@ class SyncWorkerManager:
                 await asyncio.sleep(10)  # Wait before retrying
                 continue
             except Exception as e:
+                # INTENTIONAL FALLBACK: Final safety net to prevent worker corruption
+                # After handling specific errors (network, timeout), this catches truly unexpected system errors
+                # and safely shuts down the worker to prevent data corruption
                 logger.critical(f"CRITICAL: Unexpected error in order status sync worker: {e}", exc_info=True)
                 logger.critical("This indicates a serious bug - worker shutting down for safety")
-                self.is_running = False  # Stop all workers
+                self.is_running = False  # Stop all workers to prevent state corruption
                 raise  # Let supervisor restart service
 
     async def _websocket_order_listener(self):
@@ -997,10 +1000,13 @@ class SyncWorkerManager:
                 logger.warning(f"Network error in trade sync, retrying: {e}")
                 await asyncio.sleep(60)
             except Exception as e:
+                # INTENTIONAL FALLBACK: Final safety net to prevent worker corruption
+                # After handling specific errors (network, timeout), this catches truly unexpected system errors
+                # and safely shuts down the worker to prevent trade data corruption
                 logger.critical(f"CRITICAL: Unexpected error in trade sync worker: {e}", exc_info=True)
                 logger.critical("Trade sync worker shutting down for safety")
-                self.is_running = False
-                raise
+                self.is_running = False  # Stop all workers to prevent state corruption
+                raise  # Let supervisor restart service
 
     async def _position_validation_worker(self):
         """

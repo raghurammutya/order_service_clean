@@ -64,9 +64,11 @@ class PnLCalculator:
             from ..exceptions import DatabaseError
             raise DatabaseError(f"Unable to calculate realized P&L due to database connection error: {e}")
         except Exception as e:
-            logger.error(f"CRITICAL: Error calculating realized P&L for strategy {strategy_id}: {e}")
+            # INTENTIONAL FALLBACK: Final safety net for unexpected system errors
+            # This prevents silent P&L corruption by ensuring all failures are logged and surfaced
+            logger.critical(f"CRITICAL: Unexpected error calculating realized P&L for strategy {strategy_id}: {e}", exc_info=True)
             from ..exceptions import OrderServiceError
-            raise OrderServiceError(f"P&L calculation failed for strategy {strategy_id}: {e}")
+            raise OrderServiceError(f"Critical P&L calculation failure for strategy {strategy_id}: {e}")
 
     async def calculate_unrealized_pnl(self, strategy_id: int, trading_day: Optional[date] = None) -> Decimal:
         """
@@ -106,9 +108,11 @@ class PnLCalculator:
             from ..exceptions import DatabaseError
             raise DatabaseError(f"Unable to calculate unrealized P&L due to database connection error: {e}")
         except Exception as e:
-            logger.error(f"CRITICAL: Error calculating unrealized P&L for strategy {strategy_id}: {e}")
+            # INTENTIONAL FALLBACK: Final safety net for unexpected system errors
+            # This prevents silent P&L corruption by ensuring all failures are logged and surfaced  
+            logger.critical(f"CRITICAL: Unexpected error calculating unrealized P&L for strategy {strategy_id}: {e}", exc_info=True)
             from ..exceptions import OrderServiceError
-            raise OrderServiceError(f"Unrealized P&L calculation failed for strategy {strategy_id}: {e}")
+            raise OrderServiceError(f"Critical unrealized P&L calculation failure for strategy {strategy_id}: {e}")
 
     async def calculate_trade_metrics(
         self,
@@ -211,9 +215,11 @@ class PnLCalculator:
             from ..exceptions import DatabaseError
             raise DatabaseError(f"Unable to calculate position counts due to database connection error: {e}")
         except Exception as e:
-            logger.error(f"CRITICAL: Error calculating position counts for strategy {strategy_id}: {e}")
+            # INTENTIONAL FALLBACK: Final safety net for unexpected system errors
+            # This prevents silent position data corruption by ensuring all failures are logged and surfaced
+            logger.critical(f"CRITICAL: Unexpected error calculating position counts for strategy {strategy_id}: {e}", exc_info=True)
             from ..exceptions import OrderServiceError
-            raise OrderServiceError(f"Position count calculation failed for strategy {strategy_id}: {e}")
+            raise OrderServiceError(f"Critical position count calculation failure for strategy {strategy_id}: {e}")
 
     async def calculate_win_rate(self, winning_trades: int, losing_trades: int) -> Decimal:
         """
