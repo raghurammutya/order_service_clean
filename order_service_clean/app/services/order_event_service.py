@@ -642,7 +642,7 @@ class OrderEventService:
             logger.info(f"Order {order.id} filled at price {order.average_price}")
             
             # Update positions
-            position_service = PositionService(self.db)
+            position_service = PositionService(self.db, order.user_id, order.trading_account_id)
             await position_service.update_position_for_fill(order)
             
     async def _handle_order_cancelled(self, event: OrderEvent):

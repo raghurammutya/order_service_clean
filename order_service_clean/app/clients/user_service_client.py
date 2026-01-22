@@ -10,7 +10,12 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-from common.service_registry import get_user_service_url
+# Handle missing common module in test environment
+try:
+    from common.service_registry import get_user_service_url
+except ImportError:
+    def get_user_service_url():
+        return os.getenv("USER_SERVICE_URL", "http://localhost:8011")
 
 logger = logging.getLogger(__name__)
 

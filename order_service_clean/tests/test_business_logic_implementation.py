@@ -14,10 +14,11 @@ class TestBusinessLogicImplementation:
     """Test that core business logic is properly implemented"""
 
     @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_order_event_processing_not_placeholder(self):
         """Test order event processing has real implementation, not pass statements"""
         mock_db = AsyncMock()
-        service = OrderEventService(mock_db)
+        service = OrderEventService(mock_db, user_id=123)
         
         # Create mock event
         event = OrderEvent(
@@ -29,19 +30,27 @@ class TestBusinessLogicImplementation:
         mock_order = MagicMock()
         mock_order.id = 123
         mock_order.status = "SUBMITTED"
+        mock_order.user_id = 123
+        mock_order.trading_account_id = "test_account"
         
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_order
         mock_db.execute.return_value = mock_result
         
-        # Test that event processing actually does something
-        await service._process_single_event(event)
+        # Mock PositionService to avoid actual position updates
+        with patch('app.services.position_service.PositionService') as mock_position_service:
+            mock_position_instance = AsyncMock()
+            mock_position_service.return_value = mock_position_instance
+
+            # Test that event processing actually does something
+            await service._process_single_event(event)
         
         # Verify order was updated (not just passed)
         assert mock_order.status == "COMPLETE"
         assert hasattr(mock_order, 'filled_at')
 
     @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_trade_history_sequence_integrity_calculated(self):
         """Test sequence integrity score is calculated, not hardcoded to 1.0"""
         mock_db = AsyncMock()
@@ -69,6 +78,7 @@ class TestBusinessLogicImplementation:
         assert isinstance(score, float)
 
     @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_validation_system_stores_results(self):
         """Test validation system stores and retrieves results from database"""
         from app.api.v1.endpoints.external_order_validation import get_validation_issues
@@ -116,6 +126,7 @@ class TestBusinessLogicImplementation:
         assert not MarketHoursService.has_holiday_data_for_year(2030)
 
     @pytest.mark.integration
+    @pytest.mark.asyncio
     async def test_real_trading_data_integration(self):
         """Test trading data comes from real sources, not mock values"""
         from app.api.v1.endpoints.positions_integration import get_account_funds_internal
@@ -156,6 +167,7 @@ class TestBusinessLogicImplementation:
         assert result.available_cash != 100000.0  # Old mock value
 
     @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_strategy_pnl_calculated_from_positions(self):
         """Test strategy PnL is calculated from actual positions, not zeroed"""
         from app.api.v1.endpoints.positions_integration import get_strategy_pnl_metrics_internal

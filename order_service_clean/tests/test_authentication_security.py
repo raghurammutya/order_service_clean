@@ -6,7 +6,6 @@ import pytest
 from unittest.mock import patch, MagicMock
 from fastapi import HTTPException
 import jwt
-from app.api.v1.endpoints.positions_integration import verify_internal_service
 
 
 class TestAuthenticationSecurity:
@@ -15,6 +14,9 @@ class TestAuthenticationSecurity:
     @pytest.mark.security
     def test_service_to_service_auth_required(self):
         """Test that internal APIs require proper service authentication"""
+        # Import the function directly to avoid dependency chain issues
+        from app.api.v1.endpoints.positions_integration import verify_internal_service
+        
         # Test missing token
         with pytest.raises(HTTPException) as exc_info:
             verify_internal_service(None)
