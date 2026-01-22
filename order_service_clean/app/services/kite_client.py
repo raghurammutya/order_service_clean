@@ -11,7 +11,6 @@ Config Service Integration:
 - TOKEN_MANAGER_URL and TOKEN_MANAGER_INTERNAL_API_KEY can be fetched from config service
 - Falls back to environment variables if config service unavailable
 """
-import os
 import re
 import logging
 from typing import Optional, Dict, Any
@@ -294,18 +293,38 @@ class KiteOrderClient:
 
         except Exception as e:
             logger.error(f"Order placement failed: {e}")
+            
+            # Import here to avoid circular imports
+            from ..exceptions import (
+                AuthenticationError, BrokerAPIError, RateLimitError, 
+                InsufficientFundsError, InvalidSymbolError
+            )
 
-            # Try refreshing token once on authentication errors
-            if "token" in str(e).lower() or "session" in str(e).lower():
+            # Handle specific Kite API errors
+            error_message = str(e).lower()
+            
+            if any(keyword in error_message for keyword in ["token", "session", "authorization", "authentication"]):
+                # Try refreshing token once on authentication errors
                 logger.info("Attempting to refresh token and retry...")
-                await self.refresh_token()
-
-                kite = await self._get_kite_client()
-                order_id = kite.place_order(**order_params)
-                logger.info(f"Order placed successfully after token refresh: {order_id}")
-                return order_id
-
-            raise
+                try:
+                    await self.refresh_token()
+                    kite = await self._get_kite_client()
+                    order_id = kite.place_order(**order_params)
+                    logger.info(f"Order placed successfully after token refresh: {order_id}")
+                    return order_id
+                except Exception as retry_error:
+                    logger.error(f"Order placement failed even after token refresh: {retry_error}")
+                    raise AuthenticationError(f"Authentication failed: {retry_error}")
+            
+            elif "insufficient" in error_message or "margin" in error_message:
+                raise InsufficientFundsError(f"Insufficient funds for order: {e}")
+            elif "rate limit" in error_message or "throttle" in error_message:
+                raise RateLimitError(f"Rate limit exceeded: {e}")
+            elif any(keyword in error_message for keyword in ["symbol", "instrument", "invalid"]):
+                raise InvalidSymbolError(f"Invalid symbol or parameters: {e}")
+            else:
+                # Re-raise as BrokerAPIError for unknown broker errors
+                raise BrokerAPIError(f"Order placement failed: {e}")
 
     async def modify_order(
         self,

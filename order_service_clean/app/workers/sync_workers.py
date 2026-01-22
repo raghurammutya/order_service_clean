@@ -13,21 +13,18 @@ import json
 from datetime import datetime
 from typing import Optional, List, Set
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
 import redis.asyncio as aioredis
 
 from ..config.settings import settings
 from ..database.connection import get_async_session
-from ..services.order_service import OrderService
 from ..services.position_service import PositionService
 from ..services.trade_service import TradeService
 from ..services.holding_service import HoldingService
 from ..services.margin_service import MarginService
 from ..services.pnl_calculator import PnLCalculator
-from ..services.kite_client import get_kite_client
 from ..services.kite_client_multi import get_kite_client_for_account, get_all_trading_accounts
 from ..services.market_hours import MarketHoursService, MarketSegment
-from ..services.default_strategy_service import DefaultStrategyService, get_or_create_default_strategy
+from ..services.default_strategy_service import get_or_create_default_strategy
 from ..models.order import OrderSource
 
 logger = logging.getLogger(__name__)
@@ -303,9 +300,15 @@ class SyncWorkerManager:
             except asyncio.CancelledError:
                 logger.info("Order status sync worker cancelled")
                 break
-            except Exception as e:
-                logger.error(f"Error in order status sync worker: {e}", exc_info=True)
+            except (ConnectionError, TimeoutError, asyncio.TimeoutError) as e:
+                logger.warning(f"Network/connection error in order sync, retrying: {e}")
                 await asyncio.sleep(10)  # Wait before retrying
+                continue
+            except Exception as e:
+                logger.critical(f"CRITICAL: Unexpected error in order status sync worker: {e}", exc_info=True)
+                logger.critical("This indicates a serious bug - worker shutting down for safety")
+                self.is_running = False  # Stop all workers
+                raise  # Let supervisor restart service
 
     async def _websocket_order_listener(self):
         """
