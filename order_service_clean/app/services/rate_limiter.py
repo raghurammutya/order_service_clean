@@ -5,6 +5,7 @@ Uses Redis for distributed rate limiting across multiple instances.
 Enforces 1 hard refresh per minute per account.
 """
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Optional, Tuple
 import redis.asyncio as aioredis
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 class HardRefreshRateLimiter:
     """Rate limiter for hard refresh API."""
 
-    RATE_LIMIT_SECONDS = 60  # 1 minute
+    RATE_LIMIT_SECONDS = int(os.getenv("HARD_REFRESH_RATE_LIMIT_SECONDS", "60"))  # 1 minute
     KEY_PREFIX = "hard_refresh:"
 
     def __init__(self, redis_client: aioredis.Redis):

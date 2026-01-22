@@ -207,19 +207,57 @@ async def get_validation_issues(
         HTTPException: If validation not found or access denied
     """
     try:
-        # For now, return empty list as detailed issue storage isn't fully implemented
-        # In a full implementation, this would query stored validation results
+        # Query stored validation results from database
         logger.info(
             f"User {current_user['user_id']} requested issues for validation {validation_id}"
         )
         
-        # TODO: Implement detailed issue retrieval from stored validation results
-        # This would involve:
-        # 1. Verify user has access to the validation results
-        # 2. Query stored issues with filtering
-        # 3. Return paginated results
-        
-        return []
+        try:
+            from sqlalchemy import text
+            
+            # Query validation results table
+            query = text("""
+                SELECT 
+                    issue_type,
+                    field_name,
+                    invalid_value,
+                    expected_value,
+                    severity,
+                    message,
+                    created_at
+                FROM order_service.validation_issues 
+                WHERE validation_id = :validation_id
+                AND user_id = :user_id
+                ORDER BY severity DESC, created_at DESC
+                LIMIT :limit OFFSET :offset
+            """)
+            
+            result = await db.execute(query, {
+                "validation_id": validation_id,
+                "user_id": current_user["user_id"],
+                "limit": min(limit, 100),  # Cap at 100 per request
+                "offset": offset
+            })
+            
+            issues = []
+            for row in result.fetchall():
+                issues.append({
+                    "issue_type": row[0],
+                    "field_name": row[1],
+                    "invalid_value": row[2],
+                    "expected_value": row[3],
+                    "severity": row[4],
+                    "message": row[5],
+                    "timestamp": row[6].isoformat() if row[6] else None
+                })
+            
+            return issues
+            
+        except Exception as db_error:
+            logger.warning(f"Failed to query validation issues: {db_error}")
+            
+            # Fallback: Return empty list if table doesn't exist or other DB issues
+            return []
         
     except HTTPException:
         raise
@@ -262,20 +300,61 @@ async def auto_fix_tagging_issues(
             f"(orphans={request.fix_orphans}, mismatches={request.fix_mismatches}, dry_run={request.dry_run})"
         )
         
-        # First, we need to re-run validation to get the current issues
-        # In a full implementation, we would load stored validation results
+        # Load stored validation results instead of re-running validation
+        try:
+            from sqlalchemy import text
+            
+            # Get validation metadata
+            validation_query = text("""
+                SELECT trading_account_id, symbol, status, created_at
+                FROM order_service.validation_sessions
+                WHERE validation_id = :validation_id 
+                AND user_id = :user_id
+            """)
+            
+            validation_result = await session.execute(validation_query, {
+                "validation_id": request.validation_id,
+                "user_id": current_user["user_id"]
+            })
+            
+            validation_row = validation_result.fetchone()
+            if not validation_row:
+                raise HTTPException(404, f"Validation {request.validation_id} not found")
+            
+            trading_account_id, symbol, status, created_at = validation_row
+            
+            # Get stored validation issues for auto-fix
+            issues_query = text("""
+                SELECT issue_type, order_id, position_id, trade_id, 
+                       suggested_strategy_id, suggested_portfolio_id,
+                       severity, auto_fixable
+                FROM order_service.validation_issues
+                WHERE validation_id = :validation_id
+                AND auto_fixable = true
+                ORDER BY severity DESC
+            """)
+            
+            issues_result = await session.execute(issues_query, {
+                "validation_id": request.validation_id
+            })
+            
+            auto_fixable_issues = list(issues_result.fetchall())
+            
+        except Exception as db_error:
+            logger.warning(f"Failed to load stored validation results: {db_error}")
+            
+            # Fallback: run fresh validation
+            validation_service = ExternalOrderTaggingValidationService(session)
+            authorized_accounts = await get_authorized_trading_accounts(current_user, session)
+            
+            report = await validation_service.validate_tagging_integrity(
+                trading_account_id=None,
+                symbol=None,
+                include_auto_fix_suggestions=True
+            )
+            auto_fixable_issues = report.get("auto_fixable_issues", [])
+        
         validation_service = ExternalOrderTaggingValidationService(session)
-        
-        # Get user's authorized accounts for validation scope
-        authorized_accounts = await get_authorized_trading_accounts(current_user, session)
-        
-        # For now, run validation on all authorized accounts
-        # TODO: Store and retrieve validation results by validation_id
-        report = await validation_service.validate_tagging_integrity(
-            trading_account_id=None,  # Validate all authorized accounts
-            symbol=None,
-            include_auto_fix_suggestions=True
-        )
         
         # Perform auto-fix
         fix_result = await validation_service.auto_fix_tagging_issues(

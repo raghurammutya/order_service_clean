@@ -42,19 +42,35 @@ except ImportError:
 
     def get_service_url(service_name: str, **kwargs) -> str:
         """Fallback when service registry module is not available."""
+        # Get fallback URLs from environment variables
+        env_var = f"{service_name.upper()}_SERVICE_URL"
+        service_url = os.getenv(env_var)
+        
+        if service_url:
+            return service_url
+            
+        # Legacy hardcoded fallbacks - should be externalized
         fallback_ports = {
-            "token_manager": 8088,
-            "ticker_service": 8089,
-            "ticker_service_v2": 8089,
-            "user_service": 8011,
-            "calendar_service": 8013,
+            "token_manager": int(os.getenv("TOKEN_MANAGER_PORT", "8088")),
+            "ticker_service": int(os.getenv("TICKER_SERVICE_PORT", "8089")),
+            "ticker_service_v2": int(os.getenv("TICKER_SERVICE_V2_PORT", "8089")),
+            "user_service": int(os.getenv("USER_SERVICE_PORT", "8011")),
+            "calendar_service": int(os.getenv("CALENDAR_SERVICE_PORT", "8013")),
         }
-        port = fallback_ports.get(service_name, 8000)
-        return f"http://localhost:{port}"
+        port = fallback_ports.get(service_name, int(os.getenv("DEFAULT_SERVICE_PORT", "8000")))
+        host = os.getenv("SERVICE_HOST", "localhost")
+        return f"http://{host}:{port}"
 
     def get_jwks_url(**kwargs) -> str:
         """Fallback JWKS URL when service registry is not available."""
-        return "http://localhost:8011/api/v1/auth/.well-known/jwks.json"
+        # Check environment variable first
+        jwks_url = os.getenv("JWKS_URL")
+        if jwks_url:
+            return jwks_url
+            
+        # Fallback to user service
+        user_service_url = get_service_url("user_service")
+        return f"{user_service_url}/api/v1/auth/.well-known/jwks.json"
 
 
 # =============================================================================
@@ -227,6 +243,12 @@ class Settings(BaseSettings):
         default_factory=lambda: _get_from_config_service("JWT_SIGNING_KEY_ID", required=True, is_secret=False),
         description="JWT signing key ID - MANDATORY from config_service"
     )
+    
+    # Service-to-Service Authentication
+    INTERNAL_SERVICE_SECRET: str = Field(
+        default_factory=lambda: _get_from_config_service("INTERNAL_SERVICE_SECRET", required=True, is_secret=True),
+        description="Internal service authentication secret - MANDATORY from config_service"
+    )
 
     # Rate Limiting
     rate_limit_enabled: bool = Field(default=True, env="RATE_LIMIT_ENABLED")
@@ -247,13 +269,13 @@ class Settings(BaseSettings):
         if self.cors_origins:
             return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
-        # Production defaults - NO localhost
+        # Production defaults from environment variables
         production_origins = [
-            "http://5.223.52.98",
-            "http://5.223.52.98:80",
-            "http://5.223.52.98:3001",
-            "https://app.stocksblitz.com",
-            "https://trading.stocksblitz.com",
+            os.getenv("PRODUCTION_HOST_HTTP", "http://5.223.52.98"),
+            f"{os.getenv('PRODUCTION_HOST_HTTP', 'http://5.223.52.98')}:80",
+            f"{os.getenv('PRODUCTION_HOST_HTTP', 'http://5.223.52.98')}:3001",
+            os.getenv("PRODUCTION_DOMAIN_HTTPS", "https://app.stocksblitz.com"),
+            os.getenv("TRADING_DOMAIN_HTTPS", "https://trading.stocksblitz.com"),
         ]
 
         # Development additional origins

@@ -206,10 +206,39 @@ class EnhancedOrderService:
             raise HTTPException(404, f"Order {order_id} not found")
 
         try:
-            # Submit to broker (placeholder - would use actual broker API)
-            broker_order_id = f"BROKER_{order_id}_{int(datetime.utcnow().timestamp())}"
+            # Get broker client for user's account
+            from ..services.kite_client import get_kite_client_for_user
+            kite_client = await get_kite_client_for_user(order.user_id)
             
-            # Update order status
+            if not kite_client:
+                raise HTTPException(500, f"Unable to get broker client for user {order.user_id}")
+            
+            # Prepare order parameters for broker
+            broker_params_dict = {
+                "tradingsymbol": order.tradingsymbol,
+                "exchange": order.exchange,
+                "transaction_type": order.transaction_type,
+                "quantity": order.quantity,
+                "order_type": order.order_type,
+                "product": order.product,
+                "validity": order.validity or "DAY",
+                "disclosed_quantity": order.disclosed_quantity,
+                "tag": f"ORDER_SERVICE_{order_id}"
+            }
+            
+            # Add price fields if present
+            if order.price is not None:
+                broker_params_dict["price"] = float(order.price)
+            if order.trigger_price is not None:
+                broker_params_dict["trigger_price"] = float(order.trigger_price)
+            
+            # Submit to actual broker API
+            broker_order_id = await kite_client.place_order(**broker_params_dict)
+            
+            if not broker_order_id:
+                raise HTTPException(500, "Broker did not return order ID")
+            
+            # Update order status with real broker response
             order.status = OrderStatus.SUBMITTED.value
             order.broker_order_id = broker_order_id
             order.submitted_at = datetime.utcnow()

@@ -780,15 +780,38 @@ class KiteOrderClient:
             raise
 
 
-# Global client instance
-_kite_client: Optional[KiteOrderClient] = None
+# Global client instances per user
+_kite_clients: Dict[str, KiteOrderClient] = {}
 
 
+def get_kite_client_sync() -> KiteOrderClient:
+    """Get or create the default Kite order client"""
+    if "default" not in _kite_clients:
+        _kite_clients["default"] = KiteOrderClient()
+    return _kite_clients["default"]
+
+
+# Backward compatibility
 def get_kite_client() -> KiteOrderClient:
-    """Get or create the global Kite order client"""
-    global _kite_client
+    """Get or create the global Kite order client (backward compatibility)"""
+    return get_kite_client_sync()
 
-    if _kite_client is None:
-        _kite_client = KiteOrderClient()
 
-    return _kite_client
+async def get_kite_client_for_user(user_id: str) -> Optional[KiteOrderClient]:
+    """Get or create a Kite client for specific user"""
+    try:
+        # For now, use default client - in future this would lookup user-specific API keys
+        # from a secure store and create user-specific clients
+        if "default" not in _kite_clients:
+            _kite_clients["default"] = KiteOrderClient()
+            
+        client = _kite_clients["default"]
+        
+        # Ensure client has fresh token
+        await client.refresh_token()
+        
+        return client
+        
+    except Exception as e:
+        logger.error(f"Failed to get kite client for user {user_id}: {e}")
+        return None

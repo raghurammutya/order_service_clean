@@ -427,7 +427,9 @@ class MissingTradeHistoryHandler:
             "total_trades": int(row[1] or 0),
             "positions_with_trades": int(row[2] or 0),
             "position_integrity_score": float(row[3] or 0.0),
-            "sequence_integrity_score": 1.0  # TODO: Implement sequence checking
+            "sequence_integrity_score": await self._calculate_sequence_integrity_score(
+                trading_account_id, start_date, end_date
+            )
         }
 
     async def _detect_trade_gaps(
@@ -1178,6 +1180,91 @@ class MissingTradeHistoryHandler:
                 WHERE id = :position_id
             """),
             {"position_id": position_id}
+        )
+
+    async def _calculate_sequence_integrity_score(
+        self,
+        trading_account_id: str,
+        start_date: datetime,
+        end_date: datetime
+    ) -> float:
+        """
+        Calculate sequence integrity score based on trade timestamp gaps.
+        
+        Checks for:
+        - Unexpected large gaps in trade timestamps
+        - Missing trade sequences during market hours
+        - Broker API downtime periods
+        
+        Returns:
+            Score between 0.0 and 1.0 (1.0 = perfect sequence integrity)
+        """
+        try:
+            # Get all trades in chronological order
+            trades_query = text("""
+                SELECT trade_time, symbol, quantity
+                FROM order_service.trades 
+                WHERE trading_account_id = :trading_account_id
+                AND trade_time BETWEEN :start_date AND :end_date
+                ORDER BY trade_time ASC
+            """)
+            
+            result = await self.db.execute(
+                trades_query,
+                {
+                    "trading_account_id": trading_account_id,
+                    "start_date": start_date,
+                    "end_date": end_date
+                }
+            )
+            
+            trades = list(result.fetchall())
+            
+            if len(trades) < 2:
+                return 1.0  # Perfect score for insufficient data to analyze gaps
+                
+            # Analyze gaps between trades
+            gap_penalties = 0
+            total_gaps = 0
+            
+            for i in range(1, len(trades)):
+                prev_trade = trades[i-1]
+                curr_trade = trades[i]
+                
+                time_gap = (curr_trade[0] - prev_trade[0]).total_seconds()
+                
+                # Flag suspicious gaps (> 5 minutes during trading hours)
+                if time_gap > 300:  # 5 minutes
+                    # Check if gap occurred during market hours
+                    if self._is_during_market_hours(prev_trade[0]):
+                        gap_severity = min(time_gap / 3600, 4.0) / 4.0  # Max 4-hour gap = full penalty
+                        gap_penalties += gap_severity
+                        
+                total_gaps += 1
+                
+            if total_gaps == 0:
+                return 1.0
+                
+            # Calculate score (higher penalties = lower score)
+            avg_gap_penalty = gap_penalties / total_gaps
+            sequence_score = max(0.0, 1.0 - avg_gap_penalty)
+            
+            return round(sequence_score, 3)
+            
+        except Exception as e:
+            logger.error(f"Failed to calculate sequence integrity score: {e}")
+            return 0.5  # Return neutral score on error
+            
+    def _is_during_market_hours(self, timestamp: datetime) -> bool:
+        """Check if timestamp falls during normal market trading hours"""
+        # Indian market hours: 9:15 AM to 3:30 PM IST, Monday-Friday
+        market_open = timestamp.replace(hour=9, minute=15, second=0, microsecond=0)
+        market_close = timestamp.replace(hour=15, minute=30, second=0, microsecond=0)
+        
+        # Check if it's a weekday and within market hours
+        return (
+            timestamp.weekday() < 5 and  # Monday = 0, Friday = 4
+            market_open <= timestamp <= market_close
         )
 
 

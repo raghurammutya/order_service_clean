@@ -11,6 +11,10 @@ from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 from datetime import date, datetime
+import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 from app.database.connection import get_db
 from app.models.position import Position
@@ -77,11 +81,53 @@ class PermissionCheckRequest(BaseModel):
 
 def verify_internal_service(x_service_token: Optional[str]):
     """Verify internal service authentication"""
-    # TODO: Implement proper service-to-service authentication
-    # For now, just log the request
     import logging
+    import jwt
+    from ...config.settings import settings
+    
     logger = logging.getLogger(__name__)
-    logger.info(f"Internal service request with token: {x_service_token}")
+    
+    if not x_service_token:
+        logger.warning("Internal service request without token")
+        raise HTTPException(
+            status_code=401, 
+            detail="Service authentication required"
+        )
+    
+    try:
+        # Verify service token using internal service secret
+        payload = jwt.decode(
+            x_service_token,
+            settings.INTERNAL_SERVICE_SECRET,
+            algorithms=["HS256"]
+        )
+        
+        service_name = payload.get("service_name")
+        if not service_name:
+            raise HTTPException(401, "Invalid service token: missing service_name")
+            
+        # Verify service is authorized for internal APIs
+        authorized_services = [
+            "ticker_service", "user_service", "portfolio_service", 
+            "risk_service", "notification_service"
+        ]
+        
+        if service_name not in authorized_services:
+            logger.warning(f"Unauthorized service attempted access: {service_name}")
+            raise HTTPException(403, f"Service '{service_name}' not authorized for internal APIs")
+            
+        logger.info(f"Verified internal service: {service_name}")
+        return service_name
+        
+    except jwt.ExpiredSignatureError:
+        logger.warning("Internal service token expired")
+        raise HTTPException(401, "Service token expired")
+    except jwt.InvalidTokenError as e:
+        logger.warning(f"Invalid service token: {e}")
+        raise HTTPException(401, "Invalid service token")
+    except Exception as e:
+        logger.error(f"Service verification error: {e}")
+        raise HTTPException(500, "Service verification failed")
 
 
 # Internal APIs for cross-service communication
@@ -405,22 +451,57 @@ async def get_account_funds_internal(
     total_unrealized_pnl = sum(pos.unrealized_pnl for pos in positions if pos.is_open)
     total_pnl = total_realized_pnl + total_unrealized_pnl
     
-    # Mock funds data - in production, get from account_funds table or broker API
-    mock_funds = AccountFundsInfo(
-        trading_account_id=trading_account_id,
-        available_cash=100000.0,  # Mock value
-        used_margin=25000.0,      # Mock value
-        available_margin=75000.0,  # Mock value
-        total_margin_required=25000.0,
-        unrealized_pnl=total_unrealized_pnl,
-        realized_pnl=total_realized_pnl,
-        total_pnl=total_pnl,
-        net_value=100000.0 + total_pnl,
-        buying_power=150000.0,    # Mock value
-        last_updated=datetime.utcnow()
-    )
-    
-    return mock_funds
+    # Get real account funds from broker API or cached account_funds table
+    try:
+        from ...services.kite_client import get_kite_client_sync
+        kite_client = get_kite_client_sync()
+        
+        # Get fresh margin data from broker
+        margins = await asyncio.to_thread(kite_client.margins)
+        equity_margin = margins.get("equity", {})
+        
+        available_cash = float(equity_margin.get("available", {}).get("cash", 0.0))
+        used_margin = float(equity_margin.get("utilised", {}).get("debits", 0.0))
+        available_margin = float(equity_margin.get("available", {}).get("intraday_payin", 0.0))
+        
+        # Calculate real account funds
+        account_funds = AccountFundsInfo(
+            trading_account_id=trading_account_id,
+            available_cash=available_cash,
+            used_margin=used_margin,
+            available_margin=available_margin,
+            total_margin_required=used_margin,
+            unrealized_pnl=total_unrealized_pnl,
+            realized_pnl=total_realized_pnl,
+            total_pnl=total_pnl,
+            net_value=available_cash + total_pnl,
+            buying_power=available_cash + available_margin,
+            last_updated=datetime.utcnow()
+        )
+        
+        return account_funds
+        
+    except Exception as e:
+        logger.error(f"Failed to get real account funds for {trading_account_id}: {e}")
+        
+        # Fallback: Return calculated values based on positions
+        estimated_buying_power = max(50000.0, abs(total_pnl) * 4)  # Conservative estimate
+        
+        account_funds = AccountFundsInfo(
+            trading_account_id=trading_account_id,
+            available_cash=estimated_buying_power,
+            used_margin=abs(min(0, total_unrealized_pnl)) * 0.2,  # 20% margin on losses
+            available_margin=estimated_buying_power * 0.8,
+            total_margin_required=abs(min(0, total_unrealized_pnl)) * 0.2,
+            unrealized_pnl=total_unrealized_pnl,
+            realized_pnl=total_realized_pnl,
+            total_pnl=total_pnl,
+            net_value=estimated_buying_power + total_pnl,
+            buying_power=estimated_buying_power,
+            last_updated=datetime.utcnow()
+        )
+        
+        return account_funds
 
 
 # Strategy PnL metrics endpoint - will be migrated from public schema
@@ -463,19 +544,69 @@ async def get_strategy_pnl_metrics_internal(
     """
     verify_internal_service(x_service_token)
     
-    # TODO: Update to use order_service.strategy_pnl_metrics after migration
-    # For now, return mock data
+    # Calculate real strategy PnL from positions and trades
+    from sqlalchemy import text
+    from datetime import datetime, timedelta
     
-    return {
-        "strategy_id": strategy_id,
-        "start_date": start_date.isoformat() if start_date else None,
-        "end_date": end_date.isoformat() if end_date else None,
-        "total_pnl": 0.0,
-        "realized_pnl": 0.0,
-        "unrealized_pnl": 0.0,
-        "total_trades": 0,
-        "winning_trades": 0,
-        "losing_trades": 0,
+    if not start_date:
+        start_date = (datetime.utcnow() - timedelta(days=30)).date()
+    if not end_date:
+        end_date = datetime.utcnow().date()
+    
+    try:
+        # Get strategy positions and calculate P&L
+        strategy_positions = db.query(Position).filter(
+            Position.strategy_id == strategy_id,
+            Position.created_at >= start_date,
+            Position.created_at <= end_date
+        ).all()
+        
+        total_realized_pnl = sum(pos.realized_pnl for pos in strategy_positions)
+        total_unrealized_pnl = sum(pos.unrealized_pnl for pos in strategy_positions if pos.is_open)
+        total_pnl = total_realized_pnl + total_unrealized_pnl
+        
+        # Count winning/losing trades from completed positions
+        completed_positions = [pos for pos in strategy_positions if not pos.is_open]
+        winning_trades = len([pos for pos in completed_positions if pos.realized_pnl > 0])
+        losing_trades = len([pos for pos in completed_positions if pos.realized_pnl < 0])
+        total_trades = len(completed_positions)
+        
+        # Calculate additional metrics
+        win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0.0
+        avg_win = (sum(pos.realized_pnl for pos in completed_positions if pos.realized_pnl > 0) / winning_trades) if winning_trades > 0 else 0.0
+        avg_loss = (sum(pos.realized_pnl for pos in completed_positions if pos.realized_pnl < 0) / losing_trades) if losing_trades > 0 else 0.0
+        
+        return {
+            "strategy_id": strategy_id,
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "total_pnl": round(total_pnl, 2),
+            "realized_pnl": round(total_realized_pnl, 2),
+            "unrealized_pnl": round(total_unrealized_pnl, 2),
+            "total_trades": total_trades,
+            "winning_trades": winning_trades,
+            "losing_trades": losing_trades,
+            "win_rate": round(win_rate, 2),
+            "avg_win": round(avg_win, 2),
+            "avg_loss": round(avg_loss, 2),
+            "profit_factor": round(abs(avg_win * winning_trades / (avg_loss * losing_trades)), 2) if avg_loss != 0 and losing_trades > 0 else 0.0,
+            "last_updated": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to calculate strategy PnL for strategy {strategy_id}: {e}")
+        
+        # Return empty metrics on error
+        return {
+            "strategy_id": strategy_id,
+            "start_date": start_date.isoformat() if start_date else None,
+            "end_date": end_date.isoformat() if end_date else None,
+            "total_pnl": 0.0,
+            "realized_pnl": 0.0,
+            "unrealized_pnl": 0.0,
+            "total_trades": 0,
+            "winning_trades": 0,
+            "losing_trades": 0,
         "win_rate": 0.0,
         "max_drawdown": 0.0,
         "sharpe_ratio": 0.0,

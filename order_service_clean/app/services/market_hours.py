@@ -104,10 +104,12 @@ async def _fetch_holidays_from_calendar(year: int) -> Set[str]:
         except Exception as e:
             logger.warning(f"Failed to fetch holidays from calendar service: {e}, using fallback")
 
-    # Fallback to hardcoded holidays
-    if year == 2025:
-        return set(MarketHoursService.HOLIDAYS_2025)
+    # Fallback to static holidays for supported years
+    year_str = str(year)
+    if year_str in MarketHoursService.STATIC_HOLIDAYS:
+        return set(MarketHoursService.STATIC_HOLIDAYS[year_str])
 
+    logger.warning(f"No holiday data available for year {year}")
     return set()
 
 
@@ -150,9 +152,10 @@ def is_holiday_sync(check_date: date = None) -> bool:
     if cache_key in _holiday_cache:
         return date_str in _holiday_cache[cache_key]
 
-    # Fallback to hardcoded
-    if year == 2025:
-        return date_str in MarketHoursService.HOLIDAYS_2025
+    # Fallback to static holidays
+    year_str = str(year)
+    if year_str in MarketHoursService.STATIC_HOLIDAYS:
+        return date_str in MarketHoursService.STATIC_HOLIDAYS[year_str]
 
     return False
 
@@ -227,26 +230,43 @@ class MarketHoursService:
     COMMODITY_SQUARE_OFF = time(23, 20)        # 11:20 PM
 
     # ============================================================================
-    # EXCHANGE HOLIDAYS (2025)
+    # EXCHANGE HOLIDAYS (Multi-year support)
     # ============================================================================
-    HOLIDAYS_2025 = [
-        "2025-01-26",  # Republic Day
-        "2025-03-14",  # Holi
-        "2025-03-31",  # Id-Ul-Fitr
-        "2025-04-10",  # Mahavir Jayanti
-        "2025-04-14",  # Dr. Ambedkar Jayanti
-        "2025-04-18",  # Good Friday
-        "2025-05-01",  # Maharashtra Day
-        "2025-06-07",  # Bakri Id
-        "2025-08-15",  # Independence Day
-        "2025-08-27",  # Ganesh Chaturthi
-        "2025-10-02",  # Mahatma Gandhi Jayanti
-        "2025-10-21",  # Dussehra
-        "2025-11-01",  # Diwali
-        "2025-11-05",  # Diwali Balipratipada
-        "2025-11-24",  # Gurunanak Jayanti
-        "2025-12-25",  # Christmas
-    ]
+    
+    # Static holiday data - fallback when calendar service unavailable
+    STATIC_HOLIDAYS = {
+        "2024": [
+            "2024-01-26", "2024-03-08", "2024-03-25", "2024-03-29",
+            "2024-04-11", "2024-04-14", "2024-04-17", "2024-05-01",
+            "2024-06-17", "2024-08-15", "2024-10-02", "2024-10-31",
+            "2024-11-01", "2024-11-15", "2024-12-25"
+        ],
+        "2025": [
+            "2025-01-26", "2025-03-14", "2025-03-31", "2025-04-10",
+            "2025-04-14", "2025-04-18", "2025-05-01", "2025-06-07", 
+            "2025-08-15", "2025-08-27", "2025-10-02", "2025-10-21",
+            "2025-11-01", "2025-11-05", "2025-11-24", "2025-12-25"
+        ],
+        "2026": [
+            "2026-01-26", "2026-03-03", "2026-03-20", "2026-03-30",
+            "2026-04-02", "2026-04-06", "2026-04-14", "2026-05-01",
+            "2026-05-27", "2026-08-15", "2026-09-16", "2026-10-02",
+            "2026-10-19", "2026-11-04", "2026-11-21", "2026-12-25"
+        ]
+    }
+    
+    # Legacy compatibility
+    HOLIDAYS_2025 = STATIC_HOLIDAYS["2025"]
+    
+    @classmethod
+    def has_holiday_data_for_year(cls, year: int) -> bool:
+        """Check if holiday data is available for given year"""
+        return str(year) in cls.STATIC_HOLIDAYS
+    
+    @classmethod 
+    def get_supported_years(cls) -> list:
+        """Get list of years with holiday data"""
+        return list(cls.STATIC_HOLIDAYS.keys())
 
     @classmethod
     def get_market_state(
@@ -278,7 +298,9 @@ class MarketHoursService:
 
         # Check if holiday
         date_str = now.strftime("%Y-%m-%d")
-        if date_str in cls.HOLIDAYS_2025:
+        year_str = str(now.year)
+        holidays = cls.STATIC_HOLIDAYS.get(year_str, [])
+        if date_str in holidays:
             return MarketState.HOLIDAY
 
         current_time = now.time()
@@ -478,7 +500,11 @@ class MarketHoursService:
             next_open += timedelta(days=1)
 
         # Skip holidays
-        while next_open.strftime("%Y-%m-%d") in cls.HOLIDAYS_2025:
+        while True:
+            year_str = str(next_open.year)
+            holidays = cls.STATIC_HOLIDAYS.get(year_str, [])
+            if next_open.strftime("%Y-%m-%d") not in holidays:
+                break
             next_open += timedelta(days=1)
 
         return int((next_open - now).total_seconds())
@@ -641,7 +667,7 @@ class MarketHoursService:
             "seconds_until_square_off": cls.time_until_square_off(segment, now),
             "current_time_ist": now.isoformat(),
             "is_weekend": now.weekday() >= 5,
-            "is_holiday": now.strftime("%Y-%m-%d") in cls.HOLIDAYS_2025,
+            "is_holiday": now.strftime("%Y-%m-%d") in cls.STATIC_HOLIDAYS.get(str(now.year), []),
         }
 
     @classmethod

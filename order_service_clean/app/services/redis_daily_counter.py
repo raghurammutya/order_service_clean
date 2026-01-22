@@ -15,6 +15,7 @@ Key Format: kite:daily_orders:{account_id}:{date}
 
 import asyncio
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import Dict, Optional, Any, List
 from zoneinfo import ZoneInfo
@@ -34,8 +35,8 @@ class RedisDailyCounter:
     """
 
     KEY_PREFIX = "kite:daily_orders"
-    DEFAULT_LIMIT = 3000
-    DEFAULT_RESET_TIME = "15:30"  # Market close IST
+    DEFAULT_LIMIT = int(os.getenv("DAILY_ORDER_LIMIT", "3000"))
+    DEFAULT_RESET_TIME = os.getenv("DAILY_RESET_TIME", "15:30")  # Market close IST
 
     def __init__(
         self,

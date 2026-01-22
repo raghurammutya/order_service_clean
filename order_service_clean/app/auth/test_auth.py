@@ -14,8 +14,17 @@ from fastapi import Header, HTTPException, Request
 
 logger = logging.getLogger(__name__)
 
-# Check if test mode is enabled
-TEST_AUTH_MODE = os.getenv("TEST_AUTH_MODE", "false").lower() == "true"
+# Check if test mode is enabled - ONLY for development/testing environments
+ENVIRONMENT = os.getenv("ENVIRONMENT", "production")
+TEST_AUTH_MODE = (
+    os.getenv("TEST_AUTH_MODE", "false").lower() == "true" and 
+    ENVIRONMENT in ["development", "testing", "staging"]
+)
+
+# Fail-safe: Disable test auth in production regardless of environment variables
+if ENVIRONMENT == "production" and TEST_AUTH_MODE:
+    logger.critical("SECURITY ALERT: Test auth disabled in production environment")
+    TEST_AUTH_MODE = False
 
 
 async def get_current_user(

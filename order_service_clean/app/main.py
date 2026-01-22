@@ -222,7 +222,7 @@ async def lifespan(app: FastAPI):
         if calendar_connected:
             logger.info("✅ Calendar service connected for market hours")
         else:
-            logger.info("ℹ️  Calendar service not available - using hardcoded holidays")
+            logger.info("ℹ️  Calendar service not available - using static holiday data for 2024-2026")
     except Exception as e:
         logger.warning(f"Calendar service initialization skipped: {e}")
 

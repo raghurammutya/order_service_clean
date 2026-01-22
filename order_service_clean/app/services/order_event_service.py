@@ -574,18 +574,139 @@ class OrderEventService:
 
     async def _process_single_event(self, event: OrderEvent):
         """
-        Process a single order event (placeholder for business logic).
+        Process a single order event with real business logic.
         
         Args:
             event: OrderEvent to process
         """
-        # Placeholder for event-specific processing logic
-        # This would include actions like:
-        # - Updating order status
-        # - Triggering notifications
-        # - Updating position calculations
-        # - Risk management checks
-        pass
+        logger.info(f"Processing event {event.id}: {event.event_type} for order {event.order_id}")
+        
+        try:
+            if event.event_type == "ORDER_PLACED":
+                await self._handle_order_placed(event)
+            elif event.event_type == "ORDER_FILLED":
+                await self._handle_order_filled(event)
+            elif event.event_type == "ORDER_CANCELLED":
+                await self._handle_order_cancelled(event)
+            elif event.event_type == "ORDER_REJECTED":
+                await self._handle_order_rejected(event)
+            elif event.event_type == "ORDER_MODIFIED":
+                await self._handle_order_modified(event)
+            elif event.event_type == "ORDER_EXPIRED":
+                await self._handle_order_expired(event)
+            else:
+                logger.warning(f"Unknown event type: {event.event_type}")
+                
+        except Exception as e:
+            logger.error(f"Failed to process event {event.id}: {e}")
+            raise
+
+    async def _handle_order_placed(self, event: OrderEvent):
+        """Handle ORDER_PLACED event - update order status and trigger notifications"""
+        from ..models.order import Order, OrderStatus
+        
+        # Update order status to SUBMITTED if broker confirmation received
+        result = await self.db.execute(
+            select(Order).where(Order.id == event.order_id)
+        )
+        order = result.scalar_one_or_none()
+        
+        if order and order.status != OrderStatus.SUBMITTED.value:
+            order.status = OrderStatus.SUBMITTED.value
+            order.submitted_at = event.created_at
+            
+            logger.info(f"Order {order.id} status updated to SUBMITTED")
+            
+    async def _handle_order_filled(self, event: OrderEvent):
+        """Handle ORDER_FILLED event - update positions and calculate PnL"""
+        from ..models.order import Order, OrderStatus
+        from ..services.position_service import PositionService
+        
+        # Update order status to COMPLETE
+        result = await self.db.execute(
+            select(Order).where(Order.id == event.order_id)
+        )
+        order = result.scalar_one_or_none()
+        
+        if order:
+            order.status = OrderStatus.COMPLETE.value
+            order.filled_at = event.created_at
+            
+            # Extract fill details from event data
+            fill_details = event.event_data or {}
+            if "average_price" in fill_details:
+                order.average_price = fill_details["average_price"]
+            if "filled_quantity" in fill_details:
+                order.filled_quantity = fill_details["filled_quantity"]
+                
+            logger.info(f"Order {order.id} filled at price {order.average_price}")
+            
+            # Update positions
+            position_service = PositionService(self.db)
+            await position_service.update_position_for_fill(order)
+            
+    async def _handle_order_cancelled(self, event: OrderEvent):
+        """Handle ORDER_CANCELLED event"""
+        from ..models.order import Order, OrderStatus
+        
+        result = await self.db.execute(
+            select(Order).where(Order.id == event.order_id)
+        )
+        order = result.scalar_one_or_none()
+        
+        if order:
+            order.status = OrderStatus.CANCELLED.value
+            order.cancelled_at = event.created_at
+            
+            cancel_reason = event.event_data.get("reason", "User cancelled") if event.event_data else "User cancelled"
+            logger.info(f"Order {order.id} cancelled: {cancel_reason}")
+            
+    async def _handle_order_rejected(self, event: OrderEvent):
+        """Handle ORDER_REJECTED event"""
+        from ..models.order import Order, OrderStatus
+        
+        result = await self.db.execute(
+            select(Order).where(Order.id == event.order_id)
+        )
+        order = result.scalar_one_or_none()
+        
+        if order:
+            order.status = OrderStatus.REJECTED.value
+            
+            rejection_reason = event.event_data.get("reason", "Unknown") if event.event_data else "Unknown"
+            logger.warning(f"Order {order.id} rejected: {rejection_reason}")
+            
+    async def _handle_order_modified(self, event: OrderEvent):
+        """Handle ORDER_MODIFIED event"""
+        from ..models.order import Order
+        
+        result = await self.db.execute(
+            select(Order).where(Order.id == event.order_id)
+        )
+        order = result.scalar_one_or_none()
+        
+        if order and event.event_data:
+            # Update order with modified parameters
+            modified_fields = event.event_data.get("modified_fields", {})
+            for field, new_value in modified_fields.items():
+                if hasattr(order, field):
+                    setattr(order, field, new_value)
+                    
+            logger.info(f"Order {order.id} modified: {list(modified_fields.keys())}")
+            
+    async def _handle_order_expired(self, event: OrderEvent):
+        """Handle ORDER_EXPIRED event"""
+        from ..models.order import Order, OrderStatus
+        
+        result = await self.db.execute(
+            select(Order).where(Order.id == event.order_id)
+        )
+        order = result.scalar_one_or_none()
+        
+        if order:
+            order.status = OrderStatus.EXPIRED.value
+            
+            logger.info(f"Order {order.id} expired")
 
     # =================================
     # COMPLIANCE & AUDIT
