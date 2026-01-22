@@ -3,10 +3,7 @@ Test P&L Calculator
 
 Tests for Phase 2: P&L Calculation Engine
 """
-import pytest
 from decimal import Decimal
-from datetime import date, datetime
-from sqlalchemy.ext.asyncio import AsyncSession
 
 # Note: These are integration-style tests that verify the P&L calculator works with the database
 # In a production environment, you would use proper async test fixtures
@@ -45,7 +42,6 @@ def test_pnl_calculation_functions_exist():
 
 def test_win_rate_calculation():
     """Test win rate calculation logic"""
-    from app.services.pnl_calculator import PnLCalculator
 
     # Test with 7 winning, 3 losing trades (70% win rate)
     # This is a synchronous test of the calculation logic

@@ -5,10 +5,8 @@ Tracks all orders placed by users through the trading platform.
 """
 import enum
 from datetime import datetime
-from typing import Optional
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Numeric, DateTime, Enum as SQLEnum,
-    Boolean, Text, Index
+    Column, Integer, BigInteger, String, Numeric, DateTime, Boolean, Text, Index
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base

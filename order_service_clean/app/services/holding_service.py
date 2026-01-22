@@ -4,9 +4,7 @@ Holding Service Business Logic
 Handles long-term equity holdings tracking and updates.
 """
 import logging
-from datetime import datetime
 from typing import List, Optional, Dict, Any
-from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 

@@ -6,10 +6,9 @@ Portfolios aggregate positions, holdings, and P&L across multiple accounts.
 """
 from datetime import datetime
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Numeric, DateTime, Boolean, Index,
+    Column, Integer, String, DateTime, Boolean, Index,
     ForeignKey, Text
 )
-from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()

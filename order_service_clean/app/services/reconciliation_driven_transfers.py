@@ -23,9 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .partial_exit_attribution_service import (
-    PartialExitAttributionService,
-    AllocationResult,
-    AllocationMethod
+    AllocationResult
 )
 
 logger = logging.getLogger(__name__)
@@ -253,10 +251,7 @@ class ReconciliationDrivenTransferService:
         try:
             # GAP-REC-11: Use Transfer Instruction Generator for comprehensive instructions
             from .transfer_instruction_generator import (
-                TransferInstructionGenerator, 
-                HandoffCoordinationRequest,
-                TransferInstructionType,
-                TransferPriority
+                TransferInstructionGenerator
             )
             
             generator = TransferInstructionGenerator(self.db)

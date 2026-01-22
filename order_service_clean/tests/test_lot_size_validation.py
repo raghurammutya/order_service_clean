@@ -8,7 +8,7 @@ import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.lot_size_service import LotSizeService, FO_EXCHANGES
+from app.services.lot_size_service import LotSizeService
 
 
 @pytest.fixture

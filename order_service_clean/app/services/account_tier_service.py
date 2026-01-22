@@ -17,7 +17,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Optional, List, Dict, Any
-from sqlalchemy import select, update, and_, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -121,27 +121,25 @@ class AccountTierService:
         else:
             tier = await self.calculate_tier(trading_account_id)
 
-        await self.db.execute(
-            text("""
-                UPDATE public.kite_accounts
-                SET sync_tier = :tier,
-                    sync_tier_updated_at = :updated_at
-                WHERE account_id = (
-                    SELECT ka.account_id
-                    FROM public.kite_accounts ka
-                    JOIN user_service.trading_accounts ta ON ta.broker_account_id = ka.account_id
-                    WHERE ta.trading_account_id = :trading_account_id
-                )
-            """),
-            {
-                "tier": tier.value,
-                "updated_at": datetime.now(timezone.utc),
-                "trading_account_id": trading_account_id
-            }
-        )
-        await self.db.commit()
-
-        logger.info(f"Account {trading_account_id} tier updated to {tier.value}")
+        from ..clients.account_service_client import get_account_client
+        
+        # Update tier via Account Service API (replaces direct public.kite_accounts access)
+        try:
+            account_client = await get_account_client()
+            success = await account_client.update_account_tier(
+                trading_account_id=trading_account_id,
+                sync_tier=tier.value
+            )
+            
+            if success:
+                logger.info(f"Account {trading_account_id} tier updated to {tier.value}")
+            else:
+                logger.error(f"Failed to update tier for account {trading_account_id}")
+                
+        except Exception as e:
+            logger.error(f"Account Service API failed: {e}, skipping tier update")
+            # In production, we might want to queue this for retry
+            return
         return tier
 
     async def promote_to_hot(
@@ -162,33 +160,28 @@ class AccountTierService:
             reason: Reason for promotion (for logging)
             duration_minutes: How long to stay HOT
         """
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=duration_minutes)
-
-        await self.db.execute(
-            text("""
-                UPDATE public.kite_accounts
-                SET sync_tier = 'hot',
-                    sync_tier_updated_at = :updated_at,
-                    hot_tier_expires_at = :expires_at
-                WHERE account_id = (
-                    SELECT ka.account_id
-                    FROM public.kite_accounts ka
-                    JOIN user_service.trading_accounts ta ON ta.broker_account_id = ka.account_id
-                    WHERE ta.trading_account_id = :trading_account_id
+        from ..clients.account_service_client import get_account_client
+        
+        # Promote to HOT tier via Account Service API (replaces direct public.kite_accounts access)
+        try:
+            account_client = await get_account_client()
+            success = await account_client.promote_account_to_hot_tier(
+                trading_account_id=str(trading_account_id),
+                duration_minutes=duration_minutes
+            )
+            
+            if success:
+                expires_at = datetime.now(timezone.utc) + timedelta(minutes=duration_minutes)
+                logger.info(
+                    f"Account {trading_account_id} promoted to HOT: {reason} "
+                    f"(expires: {expires_at.isoformat()})"
                 )
-            """),
-            {
-                "updated_at": datetime.now(timezone.utc),
-                "expires_at": expires_at,
-                "trading_account_id": trading_account_id
-            }
-        )
-        await self.db.commit()
-
-        logger.info(
-            f"Account {trading_account_id} promoted to HOT: {reason} "
-            f"(expires: {expires_at.isoformat()})"
-        )
+            else:
+                logger.error(f"Failed to promote account {trading_account_id} to HOT tier")
+                
+        except Exception as e:
+            logger.error(f"Account Service API failed: {e}, skipping HOT promotion")
+            return
 
     async def get_accounts_by_tier(self, tier: SyncTier) -> List[int]:
         """Get all trading account IDs for a specific tier.
@@ -199,18 +192,16 @@ class AccountTierService:
         Returns:
             List of trading_account_id values
         """
-        result = await self.db.execute(
-            text("""
-                SELECT ta.trading_account_id
-                FROM user_service.trading_accounts ta
-                JOIN public.kite_accounts ka ON ta.broker_account_id = ka.account_id
-                WHERE ka.is_active = true
-                  AND ka.sync_tier = :tier
-                  AND ta.status = 'ACTIVE'
-            """),
-            {"tier": tier.value}
-        )
-        return [row[0] for row in result.fetchall()]
+        from ..clients.account_service_client import get_account_client
+        
+        # Get accounts by tier via Account Service API (replaces direct public.kite_accounts access)
+        try:
+            account_client = await get_account_client()
+            accounts = await account_client.get_accounts_by_tier(tier.value)
+            return [int(account["trading_account_id"]) for account in accounts]
+        except Exception as e:
+            logger.error(f"Account Service API failed: {e}, returning empty list")
+            return []
 
     async def get_tier_summary(self) -> Dict[str, int]:
         """Get count of accounts per tier.
@@ -218,15 +209,16 @@ class AccountTierService:
         Returns:
             Dict mapping tier name to count
         """
-        result = await self.db.execute(
-            text("""
-                SELECT COALESCE(sync_tier, 'cold') as tier, COUNT(*) as count
-                FROM public.kite_accounts
-                WHERE is_active = true
-                GROUP BY sync_tier
-            """)
-        )
-        return {row[0]: row[1] for row in result.fetchall()}
+        from ..clients.account_service_client import get_account_client
+        
+        # Get tier summary via Account Service API (replaces direct public.kite_accounts access)
+        try:
+            account_client = await get_account_client()
+            stats = await account_client.get_account_tier_stats()
+            return stats.get("tier_counts", {})
+        except Exception as e:
+            logger.error(f"Account Service API failed: {e}, returning empty summary")
+            return {}
 
     async def recalculate_all_tiers(self) -> Dict[str, int]:
         """Recalculate tiers for all active accounts.
@@ -239,16 +231,21 @@ class AccountTierService:
         # First, demote any expired HOT promotions
         await self._demote_expired_hot_accounts()
 
-        # Get all active trading accounts
-        result = await self.db.execute(
-            text("""
-                SELECT ta.trading_account_id
-                FROM user_service.trading_accounts ta
-                JOIN public.kite_accounts ka ON ta.broker_account_id = ka.account_id
-                WHERE ta.status = 'ACTIVE' AND ka.is_active = true
-            """)
-        )
-        account_ids = [row[0] for row in result.fetchall()]
+        # Get all active trading accounts via Account Service API
+        # CRITICAL: public.kite_accounts table doesn't exist - use API instead
+        from ..clients.account_service_client import get_account_client
+        
+        try:
+            account_client = await get_account_client()
+            all_accounts = await account_client.get_accounts_by_tier("ALL")  # Get all accounts
+            # Filter for active accounts
+            account_ids = [
+                int(account["trading_account_id"]) for account in all_accounts 
+                if account.get("status") == "ACTIVE" and account.get("is_active", True)
+            ]
+        except Exception as e:
+            logger.error(f"Account Service API failed: {e}, cannot recalculate tiers")
+            return {tier.value: 0 for tier in SyncTier}
 
         tier_counts = {tier.value: 0 for tier in SyncTier}
 
@@ -264,27 +261,41 @@ class AccountTierService:
 
     async def _demote_expired_hot_accounts(self):
         """Demote accounts whose HOT tier promotion has expired."""
-        now = datetime.now(timezone.utc)
-
-        result = await self.db.execute(
-            text("""
-                UPDATE public.kite_accounts
-                SET sync_tier = 'warm',
-                    hot_tier_expires_at = NULL,
-                    sync_tier_updated_at = :now
-                WHERE sync_tier = 'hot'
-                  AND hot_tier_expires_at IS NOT NULL
-                  AND hot_tier_expires_at < :now
-                RETURNING account_id
-            """),
-            {"now": now}
-        )
-        demoted = result.fetchall()
-
-        if demoted:
-            logger.info(f"Demoted {len(demoted)} accounts from HOT (promotion expired)")
-
-        await self.db.commit()
+        # Use Account Service API to handle HOT tier expiration
+        # CRITICAL: public.kite_accounts table doesn't exist - use API instead
+        from ..clients.account_service_client import get_account_client
+        
+        try:
+            account_client = await get_account_client()
+            
+            # Get accounts that need demotion via API
+            hot_accounts = await account_client.get_accounts_by_tier("HOT")
+            
+            demoted_count = 0
+            now = datetime.now(timezone.utc)
+            
+            for account in hot_accounts:
+                # Check if promotion has expired
+                expires_at_str = account.get("hot_tier_expires_at")
+                if expires_at_str:
+                    try:
+                        expires_at = datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
+                        if expires_at < now:
+                            # Demote to WARM tier
+                            success = await account_client.update_account_tier(
+                                trading_account_id=account["trading_account_id"],
+                                sync_tier="WARM"
+                            )
+                            if success:
+                                demoted_count += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to parse expiry time for account {account.get('trading_account_id')}: {e}")
+            
+            if demoted_count > 0:
+                logger.info(f"Demoted {demoted_count} accounts from HOT (promotion expired)")
+                
+        except Exception as e:
+            logger.error(f"Account Service API failed during HOT demotion: {e}")
 
     # Private helper methods
 

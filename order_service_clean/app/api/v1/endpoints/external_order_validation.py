@@ -13,10 +13,7 @@ from pydantic import BaseModel, Field
 
 from ....database.connection import get_async_session
 from ....services.external_order_tagging_validation import (
-    ExternalOrderTaggingValidationService,
-    ValidationReport,
-    FixResult,
-    TaggingIssue
+    ExternalOrderTaggingValidationService
 )
 from ....auth.gateway_auth import get_current_user
 from ....api.dependencies.acl import get_authorized_trading_accounts

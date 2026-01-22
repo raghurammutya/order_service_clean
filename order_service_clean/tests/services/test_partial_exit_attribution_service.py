@@ -12,10 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from order_service.app.services.partial_exit_attribution_service import (
     PartialExitAttributionService,
-    AllocationMethod,
-    AllocationResult,
-    PositionAllocation,
-    attribute_partial_exit
+    AllocationMethod
 )
 
 

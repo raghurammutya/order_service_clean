@@ -6,12 +6,11 @@ Handles order placement, modification, cancellation, and tracking.
 import logging
 from datetime import datetime, date
 from typing import List, Optional, Dict, Any
-from sqlalchemy import select, update, and_, func, literal
+from sqlalchemy import select, and_, func, literal
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 
-from ..models.order import Order, OrderStatus, OrderType, ProductType, Variety
-from ..models.trade import Trade
+from ..models.order import Order
 from ..models.position import Position
 from ..config.settings import settings
 from ..database.redis_client import (
@@ -20,7 +19,6 @@ from ..database.redis_client import (
     invalidate_order_cache,
     publish_order_update
 )
-from .kite_client import get_kite_client
 from .kite_client_multi import get_kite_client_for_account
 from .circuit_breaker import (
     CircuitBreaker,
@@ -821,16 +819,19 @@ class OrderService:
         Raises:
             HTTPException: If strategy does not exist
         """
-        from sqlalchemy import text
+        from ..clients.strategy_service_client import get_strategy_client, StrategyNotFoundError
 
-        # Query public.strategy table (same table as Backend Service)
-        result = await self.db.execute(
-            text("SELECT strategy_id FROM public.strategy WHERE strategy_id = :strategy_id"),
-            {"strategy_id": strategy_id}
-        )
-        strategy = result.fetchone()
-
-        if not strategy:
+        # Validate strategy via Strategy Service API (replaces direct public.strategy access)
+        try:
+            strategy_client = await get_strategy_client()
+            is_valid = await strategy_client.validate_strategy(strategy_id)
+            
+            if not is_valid:
+                raise HTTPException(
+                    400,
+                    f"Strategy ID {strategy_id} does not exist. Please create strategy first."
+                )
+        except StrategyNotFoundError:
             raise HTTPException(
                 400,
                 f"Strategy ID {strategy_id} does not exist. Please create strategy first."

@@ -20,10 +20,9 @@ Usage:
     async def get_positions(user = Depends(get_current_user)):
         return {"user_id": user["user_id"]}
 """
-import os
 import hmac
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 
 from fastapi import Header, HTTPException, Request, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials

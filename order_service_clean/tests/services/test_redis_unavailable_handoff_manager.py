@@ -4,8 +4,7 @@ Tests handoff management when Redis is unavailable with safe pending state and r
 """
 
 import pytest
-from decimal import Decimal
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch, MagicMock
 import asyncio
 
@@ -14,7 +13,6 @@ from order_service.app.services.redis_unavailable_handoff_manager import (
     HandoffState,
     PendingHandoff,
     HandoffRetryConfig,
-    RedisUnavailableError,
     HandoffPersistenceError
 )
 

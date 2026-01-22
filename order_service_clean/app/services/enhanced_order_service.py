@@ -13,9 +13,9 @@ Key Features:
 """
 import logging
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple
 from decimal import Decimal
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 

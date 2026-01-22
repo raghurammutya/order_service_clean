@@ -24,10 +24,8 @@ Usage:
     client = get_kite_client_for_account(trading_account_id=1)
     order_id = await client.place_order(...)
 """
-import os
 import logging
 from typing import Optional, Dict, Any, Union, Callable, TypeVar
-from functools import wraps
 import httpx
 from kiteconnect import KiteConnect
 from kiteconnect.exceptions import TokenException
@@ -35,8 +33,6 @@ from kiteconnect.exceptions import TokenException
 from ..config.settings import settings
 from .kite_account_rate_limiter import (
     KiteOperation,
-    RateLimitExceeded,
-    DailyLimitExceeded,
     get_rate_limiter_manager_sync,
 )
 

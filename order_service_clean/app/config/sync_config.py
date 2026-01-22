@@ -16,10 +16,23 @@ API Call Reduction:
 | DORMANT | 800      | 0/min     | 0         |
 | Total   | 5000     | -         | 1,100/min |
 """
-import os
 from dataclasses import dataclass
 from typing import Dict
 from ..services.account_tier_service import SyncTier
+
+def _get_sync_config_value(key: str, default_value: str) -> int:
+    """Get sync config value from config service (fail-fast if unavailable)"""
+    try:
+        from .settings import _get_config_value
+        return int(_get_config_value(f"ORDER_SERVICE_{key}", required=True, default_value=default_value))
+    except Exception as e:
+        # NO FALLBACKS - sync parameters must come from config service
+        import logging
+        import sys
+        logger = logging.getLogger(__name__)
+        logger.critical(f"Sync configuration not available from config service: ORDER_SERVICE_{key}")
+        logger.critical("ARCHITECTURE VIOLATION: Sync parameters must be in config service")
+        sys.exit(1)
 
 
 @dataclass
@@ -32,23 +45,23 @@ class TierSyncConfig:
 
 
 # Default tier configurations
-# Can be overridden via environment variables
+# Configuration from config service (or environment fallback for bootstrap)
 TIER_CONFIGS: Dict[SyncTier, TierSyncConfig] = {
     SyncTier.HOT: TierSyncConfig(
-        sync_interval_seconds=int(os.getenv("SYNC_INTERVAL_HOT", "30")),
-        batch_size=int(os.getenv("SYNC_BATCH_SIZE_HOT", "50")),
+        sync_interval_seconds=_get_sync_config_value("SYNC_INTERVAL_HOT", "30"),
+        batch_size=_get_sync_config_value("SYNC_BATCH_SIZE_HOT", "50"),
         enable_websocket=True,
         description="Active orders/positions - real-time + 30s backup"
     ),
     SyncTier.WARM: TierSyncConfig(
-        sync_interval_seconds=int(os.getenv("SYNC_INTERVAL_WARM", "120")),  # 2 minutes
-        batch_size=int(os.getenv("SYNC_BATCH_SIZE_WARM", "100")),
+        sync_interval_seconds=_get_sync_config_value("SYNC_INTERVAL_WARM", "120"),  # 2 minutes
+        batch_size=_get_sync_config_value("SYNC_BATCH_SIZE_WARM", "100"),
         enable_websocket=False,
         description="Today's activity - 2 minute polling"
     ),
     SyncTier.COLD: TierSyncConfig(
-        sync_interval_seconds=int(os.getenv("SYNC_INTERVAL_COLD", "900")),  # 15 minutes
-        batch_size=int(os.getenv("SYNC_BATCH_SIZE_COLD", "200")),
+        sync_interval_seconds=_get_sync_config_value("SYNC_INTERVAL_COLD", "900"),  # 15 minutes
+        batch_size=_get_sync_config_value("SYNC_BATCH_SIZE_COLD", "200"),
         enable_websocket=False,
         description="Holdings only - 15 minute polling"
     ),

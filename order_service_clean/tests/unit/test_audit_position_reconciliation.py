@@ -4,7 +4,6 @@ from order_service.app.services.audit_service import OrderAuditService
 from order_service.app.services.position_service import PositionService
 from order_service.app.services.reconciliation_service import ReconciliationService
 from order_service.app.models.order_state_history import OrderStateHistory
-from order_service.app.models.position import Position
 
 
 class DummyDB:

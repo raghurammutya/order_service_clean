@@ -5,7 +5,7 @@ REST API for portfolio management and organization.
 """
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from datetime import datetime
 

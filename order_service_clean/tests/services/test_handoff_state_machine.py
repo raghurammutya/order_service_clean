@@ -17,9 +17,7 @@ from order_service.app.services.handoff_state_machine import (
     TransitionStatus,
     HandoffState,
     TransitionRequest,
-    TransitionResult,
-    get_handoff_state,
-    request_handoff_transition
+    TransitionResult
 )
 
 

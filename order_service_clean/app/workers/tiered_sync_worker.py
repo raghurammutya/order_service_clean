@@ -17,7 +17,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from ..config.sync_config import TIER_CONFIGS, get_tier_config
+from ..config.sync_config import get_tier_config
 from ..services.account_tier_service import AccountTierService, SyncTier
 from ..services.kite_client_multi import get_kite_client_for_account
 from ..database.connection import get_async_session

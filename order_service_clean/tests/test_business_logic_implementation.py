@@ -4,7 +4,7 @@ Critical for production signoff - proves placeholders are replaced with real log
 """
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, date
+from datetime import datetime
 from app.services.order_event_service import OrderEventService
 from app.services.missing_trade_history_handler import MissingTradeHistoryHandler
 from app.models.order_event import OrderEvent
@@ -137,7 +137,7 @@ class TestBusinessLogicImplementation:
     async def test_real_trading_data_integration(self):
         """Test trading data comes from real sources, not mock values"""
         from app.api.v1.endpoints.positions_integration import get_account_funds_internal
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import patch
         
         mock_db = MagicMock()
         mock_positions = []  # No positions for simplicity

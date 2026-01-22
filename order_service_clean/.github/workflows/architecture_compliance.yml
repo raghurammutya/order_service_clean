@@ -1,0 +1,162 @@
+name: Architecture Compliance Check
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  compliance-check:
+    runs-on: ubuntu-latest
+    name: Check Schema Boundary and Architecture Compliance
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install ruff flake8 pytest
+    
+    - name: Check for direct public.* schema access
+      run: |
+        echo "🔍 Checking for forbidden direct public schema access..."
+        
+        # Check for actual SQL queries (not documentation)
+        FORBIDDEN_PATTERNS=(
+          'text\(["\'"'"'].*SELECT.*FROM\s+public\.'
+          'text\(["\'"'"'].*UPDATE\s+public\.'
+          'text\(["\'"'"'].*INSERT\s+INTO\s+public\.'
+          'text\(["\'"'"'].*DELETE\s+FROM\s+public\.'
+          'await.*db\.execute.*public\.'
+          '"SELECT.*FROM\s+public\.'
+          "'"'SELECT.*FROM\s+public\.'
+          'f"SELECT.*FROM\s+public\.'
+          "f'"'SELECT.*FROM\s+public\.'
+        )
+        
+        VIOLATIONS=0
+        for pattern in "${FORBIDDEN_PATTERNS[@]}"; do
+          echo "Checking pattern: $pattern"
+          if rg -U "$pattern" app/ --type py; then
+            echo "❌ VIOLATION: Found direct public schema access"
+            VIOLATIONS=$((VIOLATIONS + 1))
+          fi
+        done
+        
+        if [ $VIOLATIONS -gt 0 ]; then
+          echo "❌ Architecture compliance failed: $VIOLATIONS violations found"
+          echo "All database access must go through service clients in app/clients/"
+          exit 1
+        else
+          echo "✅ No direct public schema access found"
+        fi
+    
+    - name: Check for hardcoded service URLs
+      run: |
+        echo "🌐 Checking for hardcoded service URLs..."
+        
+        HARDCODED_PATTERNS=(
+          'localhost:8089'
+          'localhost:8013'
+          'localhost:8011'
+          'localhost:8001'
+          '127\.0\.0\.1:[0-9]+'
+        )
+        
+        VIOLATIONS=0
+        for pattern in "${HARDCODED_PATTERNS[@]}"; do
+          echo "Checking for hardcoded URL pattern: $pattern"
+          if rg "$pattern" app/ --type py; then
+            echo "❌ VIOLATION: Found hardcoded service URL"
+            VIOLATIONS=$((VIOLATIONS + 1))
+          fi
+        done
+        
+        if [ $VIOLATIONS -gt 0 ]; then
+          echo "❌ Service discovery compliance failed: $VIOLATIONS violations found"
+          echo "All service communication must use _get_service_port() for dynamic discovery"
+          exit 1
+        else
+          echo "✅ No hardcoded service URLs found"
+        fi
+    
+    - name: Verify service clients use HTTP APIs
+      run: |
+        echo "🚀 Verifying service clients use HTTP APIs..."
+        
+        CLIENT_FILES=(
+          "app/clients/strategy_service_client.py"
+          "app/clients/portfolio_service_client.py"
+          "app/clients/account_service_client.py"
+          "app/clients/analytics_service_client.py"
+        )
+        
+        for file in "${CLIENT_FILES[@]}"; do
+          if [ -f "$file" ]; then
+            echo "Checking $file..."
+            if ! rg -q "(httpx|aiohttp|AsyncClient)" "$file"; then
+              echo "❌ VIOLATION: $file doesn't appear to use HTTP client"
+              exit 1
+            fi
+            
+            if ! rg -q "_get_service_port" "$file"; then
+              echo "❌ VIOLATION: $file doesn't use service discovery"
+              exit 1
+            fi
+            
+            echo "✅ $file compliance OK"
+          else
+            echo "⚠️  $file not found (may not be implemented yet)"
+          fi
+        done
+    
+    - name: Run architecture regression tests
+      run: |
+        echo "🧪 Running architecture regression tests..."
+        if [ -f "tests/test_architecture_regression_simple.py" ]; then
+          python -m pytest tests/test_architecture_regression_simple.py -v
+        else
+          echo "⚠️  Architecture regression tests not found"
+        fi
+    
+    - name: Validate architecture documentation
+      run: |
+        echo "📖 Validating architecture documentation..."
+        if [ -f "docs/ARCHITECTURE_COMPLIANCE.md" ]; then
+          echo "✅ Architecture documentation exists"
+          
+          # Check documentation completeness
+          REQUIRED_SECTIONS=(
+            "Schema Boundary Replacements"
+            "Service Discovery Implementation"
+            "Redis Data Plane Monitoring"
+            "Enhanced Security Layer"
+          )
+          
+          for section in "${REQUIRED_SECTIONS[@]}"; do
+            if grep -q "$section" docs/ARCHITECTURE_COMPLIANCE.md; then
+              echo "✅ Section found: $section"
+            else
+              echo "❌ Missing documentation section: $section"
+              exit 1
+            fi
+          done
+        else
+          echo "❌ Architecture documentation missing: docs/ARCHITECTURE_COMPLIANCE.md"
+          exit 1
+        fi
+    
+    - name: Final compliance report
+      run: |
+        echo "🎉 Architecture compliance check completed successfully!"
+        echo "✅ Schema boundaries enforced"
+        echo "✅ Service discovery implemented" 
+        echo "✅ HTTP API clients validated"
+        echo "✅ Documentation complete"

@@ -15,7 +15,7 @@ import logging
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, Query, HTTPException, Path
 from pydantic import BaseModel, Field, validator
-from datetime import datetime, timedelta
+from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....auth.gateway_auth import get_current_user

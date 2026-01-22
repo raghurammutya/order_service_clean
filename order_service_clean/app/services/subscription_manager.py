@@ -6,8 +6,7 @@ When a position is opened, subscribes to the instrument's tick feed.
 When a position is closed, unsubscribes (if no other accounts need it).
 """
 import logging
-from typing import Optional, Dict, List, Set, Any
-from datetime import datetime
+from typing import Optional, Dict, List, Any
 import httpx
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -496,23 +495,34 @@ class SubscriptionManager:
 
         position_rows = positions_result.fetchall()
 
-        # Get all holdings across all accounts (with error handling if table doesn't exist)
+        # Get all holdings across all accounts via Account Service API
+        # CRITICAL: user_service.trading_accounts table doesn't exist in order_service database
         holding_rows = []
         try:
-            holdings_result = await self.db.execute(text("""
-                SELECT DISTINCT
-                    ta.trading_account_id::text as trading_account_id,
-                    ah.symbol as symbol,
-                    ah.exchange,
-                    'holding' as source
-                FROM account_holding ah
-                INNER JOIN user_service.trading_accounts ta
-                    ON ah.account_id = ta.broker_user_id
-                WHERE ah.quantity > 0
-            """))
-            holding_rows = holdings_result.fetchall()
+            from ..clients.account_service_client import get_account_client
+            
+            account_client = await get_account_client()
+            
+            # Get all active trading accounts first (would need to be implemented in account service)
+            # For now, we'll get holdings for accounts that have positions
+            account_ids_with_positions = set(row[0] for row in position_rows)
+            
+            for trading_account_id in account_ids_with_positions:
+                try:
+                    holdings = await account_client.get_holdings(trading_account_id)
+                    for holding in holdings:
+                        if holding.get("quantity", 0) > 0:  # Only positive holdings
+                            holding_rows.append((
+                                trading_account_id,
+                                holding.get("symbol"),
+                                holding.get("exchange"),
+                                'holding'
+                            ))
+                except Exception as e:
+                    logger.warning(f"Failed to get holdings for account {trading_account_id}: {e}")
+                    
         except Exception as e:
-            logger.warning(f"Could not query holdings table: {e}")
+            logger.warning(f"Account Service API failed: {e}")
 
         # Combine positions and holdings
         all_rows = list(position_rows) + list(holding_rows)
@@ -572,8 +582,31 @@ async def get_subscription_manager(
     """
     from ..config.settings import settings
 
-    url = ticker_service_url or getattr(
-        settings, 'ticker_service_url', 'http://localhost:8089'
-    )
+    if ticker_service_url:
+        url = ticker_service_url
+    else:
+        # Use service discovery for ticker service URL
+        try:
+            from ..config.settings import _get_service_port
+            import asyncio
+            
+            async def get_ticker_url():
+                try:
+                    port = await _get_service_port("ticker_service")
+                    return f"http://ticker-service:{port}"
+                except Exception:
+                    return getattr(settings, 'ticker_service_url', 'http://ticker-service:8089')
+            
+            # Try to get from event loop, fallback if not available
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    url = getattr(settings, 'ticker_service_url', 'http://ticker-service:8089')
+                else:
+                    url = loop.run_until_complete(get_ticker_url())
+            except RuntimeError:
+                url = getattr(settings, 'ticker_service_url', 'http://ticker-service:8089')
+        except Exception:
+            url = getattr(settings, 'ticker_service_url', 'http://ticker-service:8089')
 
     return SubscriptionManager(db=db, ticker_service_url=url)

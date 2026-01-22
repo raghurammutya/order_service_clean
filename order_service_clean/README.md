@@ -26,6 +26,30 @@ AUTH_ENABLED=true PORT=8087 uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8
 - `GET /api/v1/accounts` – account info
 - `POST /api/v1/gtt` – GTT orders
 
-## Notes
-- Redis is fail-closed when `REDIS_REQUIRED=true` to prevent duplicate orders.
-- Idempotency is enabled via Redis keys; keep TTL aligned with business requirements.
+## Architecture Documentation
+
+### 📚 Primary References (Always Current)
+- **[Architecture Compliance](docs/ARCHITECTURE_COMPLIANCE.md)** - Overall system architecture and service boundaries
+- **[Exception Handling](EXCEPTION_HANDLING_ARCHITECTURE.md)** - Error handling patterns and security practices  
+- **[Position Subscriptions](docs/POSITION_SUBSCRIPTION_DESIGN.md)** - Real-time position updates design
+
+### 🛠️ Development Guidelines
+
+#### Code Standards
+- Follow exception handling patterns in `EXCEPTION_HANDLING_ARCHITECTURE.md`
+- Use structured configuration from `app/config/settings.py`  
+- Refer to `docs/ARCHITECTURE_COMPLIANCE.md` for service boundaries
+- Maintain schema isolation (order_service schema only)
+
+#### Security
+- All financial operations use fail-fast exception handling
+- No silent failures allowed in P&L calculations or order processing
+- Structured exception hierarchy for proper error categorization
+
+### 📋 Historical Documentation
+See [docs/historical/README.md](docs/historical/README.md) for archived planning documents, implementation history, and migration records.
+
+## Technical Notes
+- Redis is fail-closed when `REDIS_REQUIRED=true` to prevent duplicate orders
+- Idempotency is enabled via Redis keys; keep TTL aligned with business requirements
+- Exception handling follows structured patterns to prevent silent failures

@@ -18,7 +18,6 @@ Architecture Compliance:
 import json
 import logging
 from typing import Optional, Any, Dict
-from datetime import datetime, timezone
 
 import redis
 from redis.exceptions import RedisError
@@ -84,9 +83,22 @@ class SecureCacheService:
 
         if self._redis is None:
             try:
-                # Get Redis URL from environment (config service can't use config service!)
-                import os
-                redis_url = os.getenv("REDIS_URL", "redis://localhost:8202")
+                # Use order service config-compliant settings for Redis URL
+                try:
+                    # Try to import order service settings (config-service compliant)
+                    import sys
+                    import os
+                    # Check if we're in order service context
+                    if 'app.config.settings' in sys.modules or any('order_service' in path for path in sys.path):
+                        from ..config.settings import settings
+                        redis_url = settings.redis_url
+                    else:
+                        # Fallback for standalone usage (config service itself)
+                        redis_url = os.getenv("REDIS_URL", "redis://localhost:8202")
+                except ImportError:
+                    # Fallback for standalone usage (config service itself)
+                    import os
+                    redis_url = os.getenv("REDIS_URL", "redis://localhost:8202")
 
                 self._redis = redis.from_url(
                     redis_url,
@@ -312,14 +324,35 @@ def get_cache_service(
     global _cache_service
 
     if _cache_service is None:
-        # Get encryption key from environment if not provided
+        # Get encryption key from config service if not provided
         if encryption_key is None:
-            import os
-            key_b64 = os.getenv("CACHE_ENCRYPTION_KEY")
-            if key_b64:
-                encryption_key = key_b64.encode()
-            else:
-                logger.warning("CACHE_ENCRYPTION_KEY not set - caching disabled")
+            try:
+                # Try to use order service config-compliant settings
+                import sys
+                import os
+                # Check if we're in order service context
+                if 'app.config.settings' in sys.modules or any('order_service' in path for path in sys.path):
+                    from ..config.settings import settings
+                    key_str = settings.cache_encryption_key
+                    if key_str:
+                        encryption_key = key_str.encode()
+                    else:
+                        logger.warning("CACHE_ENCRYPTION_KEY not set in config service - caching disabled")
+                else:
+                    # Fallback for standalone usage (config service itself)
+                    key_b64 = os.getenv("CACHE_ENCRYPTION_KEY")
+                    if key_b64:
+                        encryption_key = key_b64.encode()
+                    else:
+                        logger.warning("CACHE_ENCRYPTION_KEY not set - caching disabled")
+            except ImportError:
+                # Fallback for standalone usage (config service itself)
+                import os
+                key_b64 = os.getenv("CACHE_ENCRYPTION_KEY")
+                if key_b64:
+                    encryption_key = key_b64.encode()
+                else:
+                    logger.warning("CACHE_ENCRYPTION_KEY not set - caching disabled")
 
         _cache_service = SecureCacheService(
             redis_client=redis_client,

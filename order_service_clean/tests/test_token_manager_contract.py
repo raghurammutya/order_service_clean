@@ -7,9 +7,7 @@ when using the new trading_account_id based token management endpoints.
 These are stubs that will be implemented in Sprint 1 when endpoints are available.
 """
 import ast
-import os
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
 
 
 def _load_settings_ast():
@@ -55,7 +53,6 @@ class TestOrderServiceTokenManagerIntegration:
         - Uses returned broker config for client initialization
         """
         from order_service.app.services.kite_client_multi import resolve_trading_account_config
-        import httpx
         from unittest.mock import patch, AsyncMock
         
         # Mock the HTTP response from token_manager
@@ -111,7 +108,6 @@ class TestOrderServiceTokenManagerIntegration:
         - Handles token resolution failures gracefully
         """
         from order_service.app.services.kite_client_multi import MultiAccountKiteClient
-        import httpx
         from unittest.mock import patch, AsyncMock
         
         # Mock account resolution response

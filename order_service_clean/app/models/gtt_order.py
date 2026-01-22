@@ -5,7 +5,7 @@ Tracks Good-Till-Triggered (GTT) conditional orders.
 GTT orders remain pending until market conditions are met.
 """
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Dict, Any
 from sqlalchemy import Column, Integer, String, DateTime, Text, Index
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base

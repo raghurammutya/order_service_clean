@@ -4,10 +4,8 @@ Phase 2: Token Storage Layer Testing
 Tests database storage operations and Redis integration with production environment.
 Uses real config service with environment=prod for database connections.
 """
-import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime, timezone, timedelta
-from sqlalchemy import create_engine, text
 
 # Mock the token info models since we're testing storage patterns
 class MockTokenInfo:

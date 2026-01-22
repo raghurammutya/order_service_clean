@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 from app.database.connection import get_db
 from app.models.position import Position
-from app.services.position_service import PositionService
 
 router = APIRouter()
 
@@ -545,7 +544,6 @@ async def get_strategy_pnl_metrics_internal(
     verify_internal_service(x_service_token)
     
     # Calculate real strategy PnL from positions and trades
-    from sqlalchemy import text
     from datetime import datetime, timedelta
     
     if not start_date:

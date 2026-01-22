@@ -12,8 +12,7 @@ Run from order_service directory:
 """
 import asyncio
 import sys
-from datetime import datetime
-from sqlalchemy import select, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 # Database configuration

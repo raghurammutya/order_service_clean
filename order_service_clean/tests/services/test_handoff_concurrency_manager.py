@@ -4,10 +4,8 @@ Tests concurrency safety for handoff state transitions with locking and coordina
 """
 
 import pytest
-from decimal import Decimal
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch, MagicMock
-import asyncio
 
 from order_service.app.services.handoff_concurrency_manager import (
     HandoffConcurrencyManager,

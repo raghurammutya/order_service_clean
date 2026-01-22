@@ -5,7 +5,6 @@ Real running application with actual API endpoints and database connectivity
 """
 import asyncio
 import logging
-import time
 import os
 from datetime import datetime
 from fastapi import FastAPI, HTTPException

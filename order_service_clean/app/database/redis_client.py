@@ -8,7 +8,7 @@ Provides async Redis connection for:
 """
 import logging
 import json
-from typing import Optional, Any
+from typing import Optional
 import redis.asyncio as aioredis
 
 from ..config.settings import settings

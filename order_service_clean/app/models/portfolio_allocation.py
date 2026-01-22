@@ -6,7 +6,7 @@ Tracks target vs actual allocations, drift, and rebalancing history.
 """
 from sqlalchemy import (
     Column, BigInteger, Integer, Numeric, DateTime, Text,
-    Index, func, ForeignKey, CheckConstraint
+    Index, func, CheckConstraint
 )
 from datetime import datetime
 from typing import Optional

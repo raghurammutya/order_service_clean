@@ -9,13 +9,10 @@ import pytest
 from decimal import Decimal
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
-from fastapi.testclient import TestClient
 from fastapi import HTTPException
 
-from order_service.app.api.v1.endpoints.manual_attribution import router
 from order_service.app.services.manual_attribution_service import (
     AttributionCase,
-    AttributionDecision,
     AttributionStatus,
     AttributionPriority
 )

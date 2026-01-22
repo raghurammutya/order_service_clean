@@ -5,7 +5,7 @@ Administrative functions for order service management.
 Requires authentication (and ideally admin role, TBD).
 """
 import logging
-from typing import Optional, List, Dict, Any
+from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession

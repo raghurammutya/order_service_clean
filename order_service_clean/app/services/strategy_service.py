@@ -11,13 +11,12 @@ ARCHITECTURE:
 import logging
 from datetime import datetime, date
 from typing import List, Optional, Dict, Any
-from sqlalchemy import select, and_, func, text
+from sqlalchemy import select, and_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 
 from ..models.strategy import Strategy
 from ..models.portfolio import PortfolioStrategy
-from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 

@@ -14,7 +14,6 @@ Key Features:
 
 import logging
 from typing import Optional, Dict, Any, Tuple
-from datetime import datetime
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -83,26 +82,44 @@ class DefaultPortfolioService:
             return (portfolio_id, strategy_id)
 
         try:
-            # Try to get existing default portfolio from public.strategy_portfolio table
-            # This table links strategies to portfolios
-            result = await self.db.execute(
-                text("""
-                    SELECT portfolio_id FROM public.strategy_portfolio
-                    WHERE strategy_id = :strategy_id
-                      AND is_default = TRUE
-                    LIMIT 1
-                """),
-                {"strategy_id": strategy_id}
-            )
-            row = result.fetchone()
+            from ..clients.strategy_service_client import get_strategy_client
+            
+            # Try to get existing portfolio linked to strategy via Strategy Service API
+            strategy_client = await get_strategy_client()
+            
+            try:
+                portfolio_info = await strategy_client.get_strategy_portfolio(strategy_id)
+                if portfolio_info:
+                    portfolio_id = portfolio_info["portfolio_id"]
+                    self._default_portfolio_cache[cache_key] = portfolio_id
+                    logger.debug(f"Found existing default portfolio {portfolio_id} for strategy {strategy_id}")
+                    return (portfolio_id, strategy_id)
+            except Exception as e:
+                logger.warning(f"Strategy Service API failed: {e}, creating new portfolio")
 
-            if row:
-                portfolio_id = row[0]
+            # Create new default portfolio via Portfolio Service API
+            from ..clients.portfolio_service_client import get_portfolio_client
+            portfolio_client = await get_portfolio_client()
+            
+            try:
+                portfolio_info = await portfolio_client.get_or_create_default_portfolio(
+                    trading_account_id=trading_account_id
+                )
+                portfolio_id = portfolio_info["portfolio_id"]
+                
+                # Link strategy to portfolio via Strategy Service
+                await portfolio_client.link_portfolio_to_strategy(
+                    portfolio_id=portfolio_id,
+                    strategy_id=strategy_id,
+                    allocation_percentage=100.0
+                )
+                
                 self._default_portfolio_cache[cache_key] = portfolio_id
-                logger.debug(f"Found existing default portfolio {portfolio_id} for strategy {strategy_id}")
                 return (portfolio_id, strategy_id)
+            except Exception as e:
+                logger.warning(f"Portfolio Service API failed: {e}, falling back to local creation")
 
-            # Create new default portfolio
+            # Fallback: Create new default portfolio locally (will be deprecated)
             portfolio_id = await self._create_default_portfolio(
                 trading_account_id, strategy_id, user_id
             )
@@ -138,58 +155,30 @@ class DefaultPortfolioService:
         """
         logger.info(f"Creating default portfolio for trading account: {trading_account_id}")
 
-        # Insert into public.portfolio table
-        result = await self.db.execute(
-            text("""
-                INSERT INTO public.portfolio (
-                    portfolio_name,
-                    description,
-                    portfolio_type,
-                    trading_account_id,
-                    is_default,
-                    is_active,
-                    status,
-                    allocation_method,
-                    rebalancing_frequency,
-                    config,
-                    metadata,
-                    created_by,
-                    created_at,
-                    updated_at
-                ) VALUES (
-                    'Default Portfolio',
-                    'Auto-created default portfolio for tracking external orders and manual trades. Contains the default strategy for this trading account.',
-                    'manual_tracking',
-                    :trading_account_id,
-                    TRUE,
-                    TRUE,
-                    'active',
-                    'equal_weight',
-                    'manual',
-                    '{"auto_created": true, "tracks_external": true}'::jsonb,
-                    '{"source": "auto_created", "created_reason": "default_portfolio_auto_mapping", "linked_strategy_id": :strategy_id}'::jsonb,
-                    COALESCE(:user_id::text, 'system'),
-                    NOW(),
-                    NOW()
-                )
-                RETURNING portfolio_id
-            """),
-            {
+        # Use Portfolio Service API instead of direct database access
+        # CRITICAL: public.portfolio table doesn't exist in order_service database
+        from ..clients.portfolio_service_client import get_portfolio_client
+        
+        try:
+            portfolio_client = await get_portfolio_client()
+            portfolio_data = {
                 "trading_account_id": trading_account_id,
                 "strategy_id": strategy_id,
                 "user_id": user_id
             }
-        )
-
-        row = result.fetchone()
-        if not row:
-            raise Exception(f"Failed to create default portfolio for {trading_account_id}")
-
-        portfolio_id = row[0]
-        await self.db.commit()
-
-        logger.info(f"Created default portfolio {portfolio_id} for {trading_account_id}")
-        return portfolio_id
+            portfolio_response = await portfolio_client.create_default_portfolio(trading_account_id, user_id)
+            portfolio_id = portfolio_response.get("portfolio_id") or portfolio_response.get("id")
+            
+            if not portfolio_id:
+                raise Exception(f"Portfolio service didn't return portfolio_id: {portfolio_response}")
+                
+            logger.info(f"Created default portfolio {portfolio_id} for {trading_account_id} via Portfolio Service API")
+            return portfolio_id
+                
+        except Exception as e:
+            logger.error(f"Portfolio service API failed: {e}")
+            # CRITICAL: Cannot use fallback - public.portfolio table doesn't exist
+            raise Exception(f"Failed to create default portfolio for {trading_account_id}: {e}. Portfolio Service must be available.")
 
     async def _link_strategy_to_portfolio(
         self,
@@ -205,43 +194,19 @@ class DefaultPortfolioService:
         """
         logger.info(f"Linking strategy {strategy_id} to portfolio {portfolio_id}")
 
-        await self.db.execute(
-            text("""
-                INSERT INTO public.strategy_portfolio (
-                    strategy_id,
-                    portfolio_id,
-                    allocation_percentage,
-                    is_default,
-                    allocation_method,
-                    status,
-                    config,
-                    created_at,
-                    updated_at
-                ) VALUES (
-                    :strategy_id,
-                    :portfolio_id,
-                    100.0,
-                    TRUE,
-                    'fixed',
-                    'active',
-                    '{"auto_created": true, "tracks_external": true}'::jsonb,
-                    NOW(),
-                    NOW()
-                )
-                ON CONFLICT (strategy_id, portfolio_id) 
-                DO UPDATE SET
-                    is_default = TRUE,
-                    allocation_percentage = 100.0,
-                    updated_at = NOW()
-            """),
-            {
-                "strategy_id": strategy_id,
-                "portfolio_id": portfolio_id
-            }
-        )
-
-        await self.db.commit()
-        logger.info(f"Successfully linked strategy {strategy_id} to portfolio {portfolio_id}")
+        # Use Portfolio Service API instead of direct database access  
+        # CRITICAL: public.strategy_portfolio table doesn't exist in order_service database
+        from ..clients.portfolio_service_client import get_portfolio_client
+        
+        try:
+            portfolio_client = await get_portfolio_client()
+            await portfolio_client.link_portfolio_to_strategy(portfolio_id, strategy_id, allocation_percentage=100.0)
+            logger.info(f"Successfully linked strategy {strategy_id} to portfolio {portfolio_id} via Portfolio Service API")
+            
+        except Exception as e:
+            logger.error(f"Portfolio service API failed while linking strategy: {e}")
+            # CRITICAL: Cannot use fallback - public.strategy_portfolio table doesn't exist
+            raise Exception(f"Failed to link strategy {strategy_id} to portfolio {portfolio_id}: {e}. Portfolio Service must be available.")
 
     async def tag_orphan_position_with_portfolio(
         self,
@@ -429,28 +394,43 @@ class DefaultPortfolioService:
             for row in result.fetchall()
         ]
 
-        # Check for strategies without portfolios
-        result = await self.db.execute(
-            text(f"""
-                SELECT s.strategy_id, s.trading_account_id
-                FROM public.strategy s
-                WHERE s.is_default = TRUE
-                  AND NOT EXISTS (
-                      SELECT 1 FROM public.strategy_portfolio sp
-                      WHERE sp.strategy_id = s.strategy_id
-                        AND sp.is_default = TRUE
-                  )
-                  {where_clause.replace('trading_account_id', 's.trading_account_id')}
-            """),
-            params
-        )
-        orphan_strategies = [
-            {
-                "strategy_id": row[0],
-                "trading_account_id": row[1]
-            }
-            for row in result.fetchall()
-        ]
+        # Check for strategies without portfolios via Strategy Service API
+        # CRITICAL: public.strategy and public.strategy_portfolio tables don't exist
+        orphan_strategies = []
+        try:
+            from ..clients.strategy_service_client import get_strategy_client
+            
+            strategy_client = await get_strategy_client()
+            
+            # Get default strategies and check if they have portfolio links
+            if trading_account_id:
+                strategies = await strategy_client.get_strategies_by_account(trading_account_id)
+            else:
+                strategies = await strategy_client.get_all_default_strategies()
+            
+            for strategy in strategies:
+                if strategy.get("is_default"):
+                    # Check if strategy has portfolio via Portfolio Service
+                    try:
+                        from ..clients.portfolio_service_client import get_portfolio_client
+                        portfolio_client = await get_portfolio_client()
+                        
+                        portfolios = await portfolio_client.get_portfolios_by_strategy(strategy["id"])
+                        if not portfolios:
+                            orphan_strategies.append({
+                                "strategy_id": strategy["id"],
+                                "trading_account_id": strategy.get("trading_account_id")
+                            })
+                    except Exception:
+                        # Assume orphaned if we can't check
+                        orphan_strategies.append({
+                            "strategy_id": strategy["id"],
+                            "trading_account_id": strategy.get("trading_account_id")
+                        })
+                        
+        except Exception as e:
+            logger.warning(f"Strategy/Portfolio Service API failed: {e}")
+            orphan_strategies = []
 
         results.update({
             "missing_portfolio_positions": missing_portfolio_positions,
@@ -561,52 +541,62 @@ class DefaultPortfolioService:
         except Exception:
             return None
 
-        # Get portfolio details
-        result = await self.db.execute(
-            text("""
-                SELECT
-                    p.portfolio_id,
-                    p.portfolio_name,
-                    p.trading_account_id,
-                    p.is_default,
-                    p.portfolio_type,
-                    p.status,
-                    p.is_active,
-                    p.created_at,
-                    s.strategy_id,
-                    s.strategy_name,
-                    (SELECT COUNT(*) FROM order_service.positions pos
-                     WHERE pos.portfolio_id = p.portfolio_id AND pos.is_open = true) as open_positions,
-                    (SELECT COUNT(*) FROM order_service.orders o
-                     WHERE o.portfolio_id = p.portfolio_id
-                       AND o.status IN ('PENDING', 'SUBMITTED', 'OPEN', 'TRIGGER_PENDING')) as active_orders
-                FROM public.portfolio p
-                JOIN public.strategy_portfolio sp ON sp.portfolio_id = p.portfolio_id
-                JOIN public.strategy s ON s.strategy_id = sp.strategy_id
-                WHERE p.portfolio_id = :portfolio_id
-                  AND sp.is_default = TRUE
-                LIMIT 1
-            """),
-            {"portfolio_id": portfolio_id}
-        )
-
-        row = result.fetchone()
-        if not row:
+        # Get portfolio details via Portfolio and Strategy Service APIs
+        # CRITICAL: public.portfolio, public.strategy_portfolio, public.strategy tables don't exist
+        try:
+            from ..clients.portfolio_service_client import get_portfolio_client
+            from ..clients.strategy_service_client import get_strategy_client
+            
+            portfolio_client = await get_portfolio_client()
+            strategy_client = await get_strategy_client()
+            
+            # Get portfolio info
+            portfolio_info = await portfolio_client.get_portfolio_info(portfolio_id)
+            if not portfolio_info:
+                return None
+            
+            # Get strategy info
+            strategy_info = await strategy_client.get_strategy_info(str(strategy_id))
+            if not strategy_info:
+                return None
+            
+            # Get order_service specific metrics (positions and orders counts)
+            positions_result = await self.db.execute(
+                text("""
+                    SELECT COUNT(*) FROM order_service.positions 
+                    WHERE portfolio_id = :portfolio_id AND is_open = true
+                """),
+                {"portfolio_id": portfolio_id}
+            )
+            open_positions = positions_result.scalar() or 0
+            
+            orders_result = await self.db.execute(
+                text("""
+                    SELECT COUNT(*) FROM order_service.orders 
+                    WHERE portfolio_id = :portfolio_id
+                      AND status IN ('PENDING', 'SUBMITTED', 'OPEN', 'TRIGGER_PENDING')
+                """),
+                {"portfolio_id": portfolio_id}
+            )
+            active_orders = orders_result.scalar() or 0
+            
+        except Exception as e:
+            logger.error(f"Portfolio/Strategy Service API failed: {e}")
             return None
 
         return {
-            "portfolio_id": row[0],
-            "portfolio_name": row[1],
-            "trading_account_id": row[2],
-            "is_default": row[3],
-            "portfolio_type": row[4],
-            "status": row[5],
-            "is_active": row[6],
-            "created_at": row[7].isoformat() if row[7] else None,
-            "strategy_id": row[8],
-            "strategy_name": row[9],
-            "open_positions": row[10],
-            "active_orders": row[11]
+            "portfolio_id": portfolio_id,
+            "portfolio_name": portfolio_info.get("name"),
+            "trading_account_id": portfolio_info.get("trading_account_id"),
+            "is_default": portfolio_info.get("is_default"),
+            "portfolio_type": portfolio_info.get("portfolio_type"),
+            "status": portfolio_info.get("status"),
+            "is_active": portfolio_info.get("is_active"),
+            "created_at": portfolio_info.get("created_at"),
+            "strategy_id": strategy_id,
+            "strategy_name": strategy_info.get("name"),
+            "open_positions": open_positions,
+            "active_orders": active_orders
         }
 
 

@@ -21,8 +21,7 @@ from order_service.app.services.holdings_reconciliation_integration import (
 )
 from order_service.app.services.partial_exit_attribution_service import (
     AllocationResult,
-    PositionAllocation,
-    AllocationMethod
+    PositionAllocation
 )
 
 

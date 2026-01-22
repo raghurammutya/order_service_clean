@@ -6,9 +6,9 @@ Previously, revoked tokens were accepted when Redis was down (fail-open vulnerab
 Now, all tokens are rejected when Redis is unavailable (fail-closed security).
 """
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import patch, AsyncMock
 from fastapi import HTTPException
-from order_service.app.auth.jwt_auth import verify_token, check_token_revocation
+from order_service.app.auth.jwt_auth import check_token_revocation
 
 
 @pytest.fixture

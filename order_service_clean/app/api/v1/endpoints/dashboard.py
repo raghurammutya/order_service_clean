@@ -8,14 +8,13 @@ import logging
 from datetime import datetime, date
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Header
-from sqlalchemy import func, text
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from pydantic import BaseModel, Field
 from ....auth import get_current_user
 from ....database.connection import get_db
 from ....clients.user_service_client import UserServiceClient, UserServiceClientError
-from ..schemas import ErrorResponse
 
 logger = logging.getLogger(__name__)
 

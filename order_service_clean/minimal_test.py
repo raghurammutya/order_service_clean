@@ -3,7 +3,6 @@
 Minimal Order Service Test - Production Verification
 Demonstrates actual running system with real API responses
 """
-import asyncio
 import uvicorn
 from fastapi import FastAPI
 from app.config.settings import settings

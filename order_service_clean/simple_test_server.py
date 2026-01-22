@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-import asyncio
 import json
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from sqlalchemy import create_engine, text
-import threading
 import os
 
 # Simple HTTP server for demonstration

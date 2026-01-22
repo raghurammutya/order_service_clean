@@ -4,8 +4,6 @@ Simple validation tests that work without config service.
 These tests validate what's implemented without requiring external dependencies.
 """
 import ast
-import inspect
-import sys
 import os
 
 def test_file_structure():

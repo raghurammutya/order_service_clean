@@ -14,10 +14,9 @@ Key Features:
 import logging
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any, Tuple
-from sqlalchemy import select, and_, func, or_, text
+from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
-import json
 
 from ..models.order_event import OrderEvent
 from ..models.order import Order

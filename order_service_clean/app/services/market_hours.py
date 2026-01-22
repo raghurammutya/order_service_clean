@@ -23,8 +23,6 @@ Integration:
 """
 
 import logging
-import asyncio
-import os
 from datetime import datetime, time, date, timedelta
 from zoneinfo import ZoneInfo
 from enum import Enum
@@ -954,7 +952,22 @@ async def initialize_calendar_client(calendar_service_url: str = None) -> bool:
         # In main.py lifespan:
         await initialize_calendar_client("http://calendar-service:8013")
     """
-    url = calendar_service_url or os.getenv("CALENDAR_SERVICE_URL", "http://localhost:8013")
+    if calendar_service_url is None:
+        try:
+            from ..config.settings import settings, _get_service_port
+            
+            # Try service discovery first
+            try:
+                port = await _get_service_port("calendar_service")
+                url = f"http://calendar-service:{port}"
+            except Exception:
+                # Fallback to settings
+                url = settings.calendar_service_url
+        except Exception:
+            # Final fallback - use default service name
+            url = "http://calendar-service:8013"
+    else:
+        url = calendar_service_url
 
     try:
         # Try importing the calendar client

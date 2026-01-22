@@ -5,10 +5,8 @@ Provides dependency functions to check ACL permissions for trading resources.
 """
 from typing import Optional, List, Literal
 from fastapi import Depends, HTTPException, Header, Request
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
-from app.auth.dependencies import get_current_user, get_current_user_optional
+from app.auth.dependencies import get_current_user
 from app.models.user import User
 from app.utils.acl_helpers import ACLHelper
 

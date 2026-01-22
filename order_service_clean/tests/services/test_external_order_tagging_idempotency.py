@@ -5,14 +5,13 @@ Tests idempotency mechanisms for external order tagging operations
 
 import pytest
 from decimal import Decimal
-from datetime import datetime, timezone, timedelta
-from unittest.mock import AsyncMock, patch, MagicMock
+from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 from order_service.app.services.external_order_tagging_idempotency import (
     ExternalOrderTaggingIdempotency,
     IdempotencyConfig,
-    IdempotencyRecord,
     IdempotencyViolationError,
     DuplicateOperationError
 )

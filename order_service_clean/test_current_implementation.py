@@ -4,7 +4,6 @@ Test current token manager integration implementation.
 This file tests what's actually implemented in the current order_service_clean directory.
 """
 import pytest
-import asyncio
 from unittest.mock import patch, AsyncMock
 
 
@@ -141,12 +140,7 @@ class TestCurrentTokenManagerImplementation:
     def test_rate_limiter_integration(self):
         """Test that rate limiting is integrated."""
         try:
-            from app.services.kite_account_rate_limiter import (
-                get_rate_limiter_manager_sync,
-                KiteOperation,
-                RateLimitExceeded,
-                DailyLimitExceeded
-            )
+            from app.services.kite_account_rate_limiter import get_rate_limiter_manager_sync
             
             print("✅ Rate limiter components available")
             
@@ -217,21 +211,21 @@ def test_current_implementation_summary():
     
     try:
         # Check multi-account client
-        from app.services.kite_client_multi import resolve_trading_account_config
+        import app.services.kite_client_multi
         print("✅ Multi-account kite client: IMPLEMENTED")
     except ImportError:
         print("❌ Multi-account kite client: NOT FOUND")
     
     try:
         # Check single account client  
-        from app.services.kite_client import get_kite_client
+        import app.services.kite_client
         print("✅ Single account kite client: AVAILABLE")
     except ImportError:
         print("❌ Single account kite client: NOT FOUND")
     
     try:
         # Check order service
-        from app.services.order_service import OrderService
+        import app.services.order_service  # noqa: F401 - import test only
         print("✅ OrderService: AVAILABLE")
     except ImportError:
         print("❌ OrderService: NOT FOUND")

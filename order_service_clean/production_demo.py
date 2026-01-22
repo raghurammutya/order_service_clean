@@ -7,7 +7,6 @@ import json
 import time
 import subprocess
 import requests
-from threading import Thread
 from sqlalchemy import create_engine, text
 import redis
 

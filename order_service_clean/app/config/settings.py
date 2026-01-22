@@ -370,35 +370,27 @@ class Settings(BaseSettings):
         return _get_config_value("ORDER_SERVICE_CORS_ORIGINS", required=False, default_value="")
 
     def get_cors_origins(self) -> List[str]:
-        """Get CORS origins from config service"""
+        """Get CORS origins from config service (no fallbacks - config service required)"""
         cors_origins_str = self.cors_origins
         if cors_origins_str:
             return [origin.strip() for origin in cors_origins_str.split(",") if origin.strip()]
         
-        # Fallback for empty config - build from production hosts
-        origins = []
-        
+        # NO FALLBACKS - All origins must come from config service
         if self.is_production:
-            production_http = _get_config_value("ORDER_SERVICE_PRODUCTION_HOST_HTTP", required=False, 
-                                              default_value="http://5.223.52.98")
-            production_https = _get_config_value("ORDER_SERVICE_PRODUCTION_DOMAIN_HTTPS", required=False, 
-                                               default_value="https://app.stocksblitz.com") 
-            trading_https = _get_config_value("ORDER_SERVICE_TRADING_DOMAIN_HTTPS", required=False, 
-                                            default_value="https://trading.stocksblitz.com")
-            
-            origins.extend([production_http, production_https, trading_https])
+            # Production mode - fail fast if no CORS origins configured
+            logger.critical("CORS origins not configured in config service for production environment")
+            logger.critical("ARCHITECTURE VIOLATION: No fallback origins allowed in production")
+            sys.exit(1)
         else:
-            # Development origins
-            origins.extend([
-                "http://localhost:3000",
-                "http://localhost:3001", 
-                "http://localhost:3002",
-                "http://localhost:3080",
-                "http://127.0.0.1:3000",
-                "http://127.0.0.1:3001",
-            ])
-        
-        return origins
+            # Test mode - use config service with test defaults only
+            production_http = _get_config_value("ORDER_SERVICE_PRODUCTION_HOST_HTTP", required=False, 
+                                              default_value="http://localhost:3000")
+            production_https = _get_config_value("ORDER_SERVICE_PRODUCTION_DOMAIN_HTTPS", required=False, 
+                                               default_value="http://localhost:3001") 
+            trading_https = _get_config_value("ORDER_SERVICE_TRADING_DOMAIN_HTTPS", required=False, 
+                                            default_value="http://localhost:3002")
+            
+            return [production_http, production_https, trading_https]
 
     # Broker Integration
     @property
@@ -518,6 +510,16 @@ class Settings(BaseSettings):
     @property
     def trust_gateway_headers(self) -> bool:
         return _get_config_value("ORDER_SERVICE_TRUST_GATEWAY_HEADERS", required=False, default_value=False)
+
+    # System Paths
+    @property
+    def common_module_path(self) -> str:
+        return _get_config_value("ORDER_SERVICE_COMMON_MODULE_PATH", required=False, 
+                                default_value="/home/stocksadmin/agent-workspace/codex/ML")
+    
+    @property
+    def calendar_service_url(self) -> str:
+        return _build_service_url("calendar_service")
 
     class Config:
         # Only allow env vars for the bootstrap triad

@@ -8,7 +8,7 @@ Tracks all events in the order lifecycle for compliance and monitoring:
 """
 
 from sqlalchemy import (
-    Column, BigInteger, String, DateTime, ForeignKey, func
+    Column, BigInteger, String, DateTime, func
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime

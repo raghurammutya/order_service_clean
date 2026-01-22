@@ -13,7 +13,7 @@ Key Features:
 """
 
 import logging
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 from decimal import Decimal
 from dataclasses import dataclass
@@ -25,13 +25,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .partial_exit_attribution_service import (
     PartialExitAttributionService,
     AllocationResult,
-    AllocationMethod,
-    attribute_partial_exit
+    AllocationMethod
 )
 from .manual_attribution_service import (
     ManualAttributionService,
-    AttributionPriority,
-    create_attribution_case
+    AttributionPriority
 )
 
 logger = logging.getLogger(__name__)

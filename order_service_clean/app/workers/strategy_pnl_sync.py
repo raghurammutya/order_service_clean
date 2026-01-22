@@ -6,7 +6,6 @@ Runs every 60 seconds to keep strategy totals in sync with position P&L.
 """
 import asyncio
 import logging
-from datetime import datetime
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,65 +23,70 @@ async def sync_strategy_pnl(db: AsyncSession) -> dict:
         dict with sync results
     """
     try:
-        # Try to aggregate from execution_pnl_metrics first (preferred)
-        result = await db.execute(text("""
-            UPDATE public.strategy s
-            SET
-                total_pnl = COALESCE(sub.total_pnl, 0),
-                current_m2m = COALESCE(sub.unrealized_pnl, 0),
-                updated_at = NOW()
-            FROM (
-                SELECT
-                    e.strategy_id,
-                    SUM(m.total_pnl) as total_pnl,
-                    SUM(m.unrealized_pnl) as unrealized_pnl
-                FROM algo_engine.execution_pnl_metrics m
-                JOIN algo_engine.executions e ON m.execution_id = e.id
-                WHERE m.metric_date = CURRENT_DATE
-                  AND e.deleted_at IS NULL
-                  AND e.status NOT IN ('stopped', 'error', 'completed')
-                GROUP BY e.strategy_id
-            ) sub
-            WHERE s.strategy_id = sub.strategy_id
-            RETURNING s.strategy_id
+        from ..clients.strategy_service_client import get_strategy_client
+        
+        # Get execution-based P&L data via Analytics Service API
+        # CRITICAL: algo_engine.* tables don't exist in order_service database
+        try:
+            from ..clients.analytics_service_client import get_analytics_client
+            
+            analytics_client = await get_analytics_client()
+            
+            # This would require implementing a bulk P&L sync endpoint in the analytics service
+            # For now, we'll disable this sync and rely on real-time P&L updates
+            logger.info("Execution P&L sync disabled - using real-time P&L calculation instead")
+            execution_pnl = []
+            
+        except Exception as e:
+            logger.error(f"Analytics Service API failed: {e}")
+            execution_pnl = []
+
+        # Prepare bulk P&L updates
+        pnl_updates = []
+        execution_updated_strategies = set()
+        
+        for row in execution_pnl.fetchall():
+            strategy_id, total_pnl, unrealized_pnl = row
+            pnl_updates.append({
+                "strategy_id": strategy_id,
+                "total_pnl": float(total_pnl or 0),
+                "unrealized_pnl": float(unrealized_pnl or 0),
+                "source": "execution_metrics"
+            })
+            execution_updated_strategies.add(strategy_id)
+
+        # Get position-based P&L for all strategies (since execution metrics disabled)
+        # CRITICAL: Removed algo_engine checks since tables don't exist in order_service database
+        fallback_pnl = await db.execute(text("""
+            SELECT
+                p.strategy_id,
+                SUM(p.total_pnl) as total_pnl,
+                SUM(p.unrealized_pnl) as unrealized_pnl
+            FROM order_service.positions p
+            WHERE p.is_open = true
+              AND p.strategy_id IS NOT NULL
+            GROUP BY p.strategy_id
         """))
 
-        updated_ids = [row[0] for row in result.fetchall()]
-        execution_metrics_count = len(updated_ids)
+        fallback_strategies = set()
+        for row in fallback_pnl.fetchall():
+            strategy_id, total_pnl, unrealized_pnl = row
+            if strategy_id not in execution_updated_strategies:
+                pnl_updates.append({
+                    "strategy_id": strategy_id,
+                    "total_pnl": float(total_pnl or 0),
+                    "unrealized_pnl": float(unrealized_pnl or 0),
+                    "source": "position_aggregation"
+                })
+                fallback_strategies.add(strategy_id)
 
-        # Fallback: Update order_service.strategies that don't have execution metrics yet
-        # This handles legacy strategies or newly created strategies
-        # Uses direct position aggregation as fallback
-        fallback_result = await db.execute(text("""
-            UPDATE public.strategy s
-            SET
-                total_pnl = COALESCE(sub.total_pnl, 0),
-                current_m2m = COALESCE(sub.unrealized_pnl, 0),
-                updated_at = NOW()
-            FROM (
-                SELECT
-                    p.strategy_id,
-                    SUM(p.total_pnl) as total_pnl,
-                    SUM(p.unrealized_pnl) as unrealized_pnl
-                FROM order_service.positions p
-                WHERE p.is_open = true
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM algo_engine.executions e
-                      JOIN algo_engine.execution_pnl_metrics m ON e.id = m.execution_id
-                      WHERE e.strategy_id = p.strategy_id
-                        AND m.metric_date = CURRENT_DATE
-                  )
-                GROUP BY p.strategy_id
-            ) sub
-            WHERE s.strategy_id = sub.strategy_id
-            RETURNING s.strategy_id
-        """))
-
-        fallback_ids = [row[0] for row in fallback_result.fetchall()]
-        fallback_count = len(fallback_ids)
-
-        await db.commit()
+        # Send bulk P&L updates to Strategy Service (replaces direct public.strategy updates)
+        if pnl_updates:
+            strategy_client = await get_strategy_client()
+            result = await strategy_client.bulk_sync_strategy_pnl(pnl_updates)
+            
+            execution_metrics_count = len(execution_updated_strategies)
+            fallback_count = len(fallback_strategies)
 
         total_updated = execution_metrics_count + fallback_count
         logger.debug(

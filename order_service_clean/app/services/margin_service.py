@@ -4,9 +4,8 @@ Margin Service
 Provides margin calculation and validation for order placement.
 """
 import logging
-from typing import Dict, Optional, Any
+from typing import Dict, Any
 from decimal import Decimal
-from ..config.settings import settings
 
 logger = logging.getLogger(__name__)
 

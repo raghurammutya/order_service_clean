@@ -5,16 +5,13 @@ Tests comprehensive transfer instruction generation with types and priority rule
 
 import pytest
 from decimal import Decimal
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch, MagicMock
+from datetime import datetime
 
 from order_service.app.services.transfer_instruction_generator import (
     TransferInstructionGenerator,
     TransferInstructionType,
     TransferPriority,
-    TransferInstruction,
     TransferInstructionBatch,
-    InstructionMetadata,
     TransferExecutionContext
 )
 

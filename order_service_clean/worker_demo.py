@@ -3,11 +3,9 @@
 Order Service Worker Demonstration
 Shows background workers actually executing
 """
-import asyncio
 import time
 import logging
 from sqlalchemy import create_engine, text
-from datetime import datetime
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

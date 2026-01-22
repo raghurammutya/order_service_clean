@@ -6,12 +6,10 @@ Tests reconciliation service and worker functionality.
 import pytest
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from unittest.mock import MagicMock, AsyncMock, patch
 
 from app.services.reconciliation_service import ReconciliationService
 from app.services.audit_service import OrderAuditService
 from app.models.order import Order
-from app.models.order_state_history import OrderStateHistory
 
 
 class TestReconciliationService:

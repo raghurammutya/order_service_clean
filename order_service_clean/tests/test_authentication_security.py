@@ -3,7 +3,7 @@ Test authentication security - validates service-to-service auth works
 Critical for production signoff - proves security vulnerabilities are fixed
 """
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from fastapi import HTTPException
 import jwt
 

@@ -14,7 +14,6 @@ Key Features:
 
 import logging
 from typing import Optional, Dict, Any, List
-from datetime import datetime
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -116,74 +115,21 @@ class DefaultStrategyService:
         Raises:
             Exception: If execution creation fails
         """
+        # Use Execution Service API instead of direct database access
+        # CRITICAL: algo_engine.executions table doesn't exist in order_service database
         try:
-            # Check if user-managed execution already exists
-            result = await self.db.execute(
-                text("""
-                    SELECT id FROM algo_engine.executions
-                    WHERE strategy_id = :strategy_id
-                      AND execution_type = 'user_managed'
-                      AND status IN ('running', 'idle', 'paused')
-                      AND deleted_at IS NULL
-                    LIMIT 1
-                """),
-                {"strategy_id": strategy_id}
+            from ..clients.execution_service_client import get_execution_client
+            
+            execution_client = await get_execution_client()
+            execution_id = await execution_client.get_or_create_user_managed_execution(
+                strategy_id=strategy_id,
+                user_id=user_id
             )
-            row = result.fetchone()
-
-            if row:
-                execution_id = str(row[0])
-                logger.debug(f"Found existing user-managed execution {execution_id} for strategy {strategy_id}")
-                return execution_id
-
-            # Create user-managed execution
-            logger.info(f"Creating user-managed execution for strategy {strategy_id}")
-            result = await self.db.execute(
-                text("""
-                    INSERT INTO algo_engine.executions (
-                        strategy_id,
-                        user_id,
-                        execution_type,
-                        managed_by_user_id,
-                        name,
-                        status,
-                        capital_allocation_pct,
-                        parameters,
-                        created_at,
-                        updated_at
-                    ) VALUES (
-                        :strategy_id,
-                        :user_id,
-                        'user_managed',
-                        :user_id,
-                        'Manual Trading',
-                        'running',
-                        100.0,
-                        '{"is_tracking_only": true, "auto_created": true}'::jsonb,
-                        NOW(),
-                        NOW()
-                    )
-                    RETURNING id
-                """),
-                {
-                    "strategy_id": strategy_id,
-                    "user_id": user_id
-                }
-            )
-            row = result.fetchone()
-            if not row:
-                raise Exception(f"Failed to create user-managed execution for strategy {strategy_id}")
-
-            execution_id = str(row[0])
-            await self.db.commit()
-
-            logger.info(f"Created user-managed execution {execution_id} for strategy {strategy_id}")
             return execution_id
 
         except Exception as e:
-            logger.error(f"Error creating user-managed execution: {e}")
-            await self.db.rollback()
-            raise
+            logger.error(f"Execution Service API failed: {e}")
+            raise Exception(f"Failed to get/create user-managed execution for strategy {strategy_id}: {e}")
 
     async def get_or_create_default_strategy(
         self,
@@ -221,29 +167,26 @@ class DefaultStrategyService:
             return (strategy_id, execution_id)
 
         try:
-            # Try to get existing default strategy from public.strategy table
-            # (same table used by Backend Service for consistency)
-            result = await self.db.execute(
-                text("""
-                    SELECT strategy_id FROM public.strategy
-                    WHERE trading_account_id = :account_id
-                      AND is_default = TRUE
-                    LIMIT 1
-                """),
-                {"account_id": broker_account_id}
-            )
-            row = result.fetchone()
-
-            if row:
-                strategy_id = row[0]
+            from ..clients.strategy_service_client import get_strategy_client
+            
+            # Try to get existing default strategy via Strategy Service API
+            strategy_client = await get_strategy_client()
+            
+            try:
+                strategy_info = await strategy_client.get_or_create_default_strategy(
+                    trading_account_id=broker_account_id
+                )
+                strategy_id = strategy_info["strategy_id"]
                 self._default_strategy_cache[cache_key] = strategy_id
-                logger.debug(f"Found existing default strategy {strategy_id} for {broker_account_id}")
-
+                logger.debug(f"Found/created default strategy {strategy_id} for {broker_account_id}")
+                
                 # Get or create user-managed execution
                 execution_id = await self._get_or_create_user_managed_execution(strategy_id, user_id)
                 return (strategy_id, execution_id)
-
-            # Create new default strategy
+            except Exception as e:
+                logger.warning(f"Strategy Service API failed: {e}, falling back to local creation")
+                
+            # Fallback: Create new default strategy locally (will be deprecated)
             strategy_id = await self._create_default_strategy(broker_account_id, user_id)
             self._default_strategy_cache[cache_key] = strategy_id
 
@@ -275,48 +218,25 @@ class DefaultStrategyService:
         """
         logger.info(f"Creating default strategy for trading account: {trading_account_id}")
 
-        # Insert into public.strategy table (same table used by Backend Service)
-        result = await self.db.execute(
-            text("""
-                INSERT INTO public.strategy (
-                    strategy_name,
-                    description,
-                    strategy_type,
-                    trading_account_id,
-                    is_default,
-                    is_active,
-                    status,
-                    config,
-                    metadata,
-                    created_by
-                ) VALUES (
-                    'Default Strategy',
-                    'Auto-created default strategy for tracking external orders and positions. This strategy does not execute trades - it only tracks external activity.',
-                    'passive',
-                    :trading_account_id,
-                    TRUE,
-                    TRUE,
-                    'active',
-                    '{"auto_execute": false}'::jsonb,
-                    '{"source": "auto_created", "created_reason": "default_strategy_auto_tagging"}'::jsonb,
-                    'system'
-                )
-                RETURNING strategy_id
-            """),
-            {
-                "trading_account_id": trading_account_id
-            }
-        )
-
-        row = result.fetchone()
-        if not row:
-            raise Exception(f"Failed to create default strategy for {trading_account_id}")
-
-        strategy_id = row[0]
-        await self.db.commit()
-
-        logger.info(f"Created default strategy {strategy_id} for {trading_account_id}")
-        return strategy_id
+        # Use Strategy Service API instead of direct database access
+        from ..clients.strategy_service_client import get_strategy_client
+        
+        try:
+            strategy_client = await get_strategy_client()
+            strategy_response = await strategy_client.create_default_strategy(trading_account_id)
+            strategy_id = strategy_response.get("strategy_id") or strategy_response.get("id")
+            
+            if not strategy_id:
+                raise Exception(f"Strategy service didn't return strategy_id: {strategy_response}")
+                
+            logger.info(f"Created default strategy {strategy_id} for {trading_account_id} via API")
+            return strategy_id
+            
+        except Exception as e:
+            logger.error(f"Strategy service API failed: {e}")
+            # CRITICAL: public.strategy table doesn't exist in order_service database
+            # Cannot use fallback - Strategy Service must be available
+            raise Exception(f"Strategy Service API unavailable, cannot create default strategy for {trading_account_id}: {e}")
 
     async def tag_orphan_position(
         self,
@@ -545,48 +465,88 @@ class DefaultStrategyService:
         Returns:
             Dict with strategy info, or None if not found
         """
-        result = await self.db.execute(
-            text("""
-                SELECT
-                    s.strategy_id,
-                    s.strategy_name,
-                    s.trading_account_id,
-                    s.is_default,
-                    s.strategy_type,
-                    s.status,
-                    s.is_active,
-                    s.created_at,
-                    (SELECT COUNT(*) FROM order_service.positions p
-                     WHERE p.strategy_id = s.strategy_id AND p.is_open = true) as open_positions,
-                    (SELECT COUNT(*) FROM order_service.orders o
-                     WHERE o.strategy_id = s.strategy_id
-                       AND o.status IN ('PENDING', 'SUBMITTED', 'OPEN', 'TRIGGER_PENDING')) as active_orders,
-                    (SELECT COALESCE(SUM(p.total_pnl), 0) FROM order_service.positions p
-                     WHERE p.strategy_id = s.strategy_id) as total_pnl
-                FROM public.strategy s
-                WHERE s.trading_account_id = :account_id
-                  AND s.is_default = TRUE
-                LIMIT 1
-            """),
-            {"account_id": trading_account_id}
-        )
-
-        row = result.fetchone()
-        if not row:
+        # Use Strategy Service API instead of direct database access
+        from ..clients.strategy_service_client import get_strategy_client
+        
+        try:
+            strategy_client = await get_strategy_client()
+            default_strategy = await strategy_client.get_or_create_default_strategy(trading_account_id)
+            
+            if not default_strategy:
+                return None
+                
+            # Get local order_service metrics using the strategy_id
+            strategy_id = default_strategy.get("strategy_id") or default_strategy.get("id")
+            
+            # Query local order_service data
+            metrics_result = await self.db.execute(
+                text("""
+                    SELECT
+                        (SELECT COUNT(*) FROM order_service.positions p
+                         WHERE p.strategy_id = :strategy_id AND p.is_open = true) as open_positions,
+                        (SELECT COUNT(*) FROM order_service.orders o
+                         WHERE o.strategy_id = :strategy_id
+                           AND o.status IN ('PENDING', 'SUBMITTED', 'OPEN', 'TRIGGER_PENDING')) as active_orders,
+                        (SELECT COALESCE(SUM(p.total_pnl), 0) FROM order_service.positions p
+                         WHERE p.strategy_id = :strategy_id) as total_pnl
+                """),
+                {"strategy_id": strategy_id}
+            )
+            
+            metrics_row = metrics_result.fetchone()
+            
+            # Combine strategy info from API with local metrics
+            result = type('MockRow', (), {
+                'strategy_id': strategy_id,
+                'strategy_name': default_strategy.get('name'),
+                'trading_account_id': default_strategy.get('trading_account_id'),
+                'is_default': default_strategy.get('is_default', True),
+                'strategy_type': default_strategy.get('strategy_type'),
+                'status': default_strategy.get('state'),
+                'is_active': default_strategy.get('is_active'),
+                'created_at': default_strategy.get('created_at'),
+                'open_positions': metrics_row[0] if metrics_row else 0,
+                'active_orders': metrics_row[1] if metrics_row else 0,
+                'total_pnl': metrics_row[2] if metrics_row else 0.0
+            })()
+            
+            # Create a mock result that mimics database row
+            from collections import namedtuple
+            Row = namedtuple('Row', ['strategy_id', 'strategy_name', 'trading_account_id', 'is_default', 
+                                   'strategy_type', 'status', 'is_active', 'created_at', 
+                                   'open_positions', 'active_orders', 'total_pnl'])
+            result = Row(
+                strategy_id=strategy_id,
+                strategy_name=default_strategy.get('name'),
+                trading_account_id=default_strategy.get('trading_account_id'),
+                is_default=default_strategy.get('is_default', True),
+                strategy_type=default_strategy.get('strategy_type'),
+                status=default_strategy.get('state'),
+                is_active=default_strategy.get('is_active'),
+                created_at=default_strategy.get('created_at'),
+                open_positions=metrics_row[0] if metrics_row else 0,
+                active_orders=metrics_row[1] if metrics_row else 0,
+                total_pnl=metrics_row[2] if metrics_row else 0.0
+            )
+            
+        except Exception as e:
+            logger.error(f"Strategy service API failed: {e}")
+            # CRITICAL: public.strategy table doesn't exist in order_service database
+            # Cannot use fallback - Strategy Service must be available
             return None
 
         return {
-            "id": row[0],
-            "name": row[1],
-            "trading_account_id": row[2],
-            "is_default": row[3],
-            "strategy_type": row[4],
-            "state": row[5],
-            "is_active": row[6],
-            "created_at": row[7].isoformat() if row[7] else None,
-            "open_positions": row[8],
-            "active_orders": row[9],
-            "total_pnl": float(row[10]) if row[10] else 0.0
+            "id": result.strategy_id,
+            "name": result.strategy_name,
+            "trading_account_id": result.trading_account_id,
+            "is_default": result.is_default,
+            "strategy_type": result.strategy_type,
+            "state": result.status,
+            "is_active": result.is_active,
+            "created_at": result.created_at,
+            "open_positions": result.open_positions,
+            "active_orders": result.active_orders,
+            "total_pnl": float(result.total_pnl) if result.total_pnl else 0.0
         }
 
     async def get_default_strategy_positions(
@@ -682,15 +642,18 @@ class DefaultStrategyService:
         Returns:
             True if this is a default strategy
         """
-        result = await self.db.execute(
-            text("""
-                SELECT is_default FROM public.strategy
-                WHERE strategy_id = :strategy_id
-            """),
-            {"strategy_id": strategy_id}
-        )
-        row = result.fetchone()
-        return row[0] if row else False
+        # Use Strategy Service API instead of direct database access
+        from ..clients.strategy_service_client import get_strategy_client
+        
+        try:
+            strategy_client = await get_strategy_client()
+            strategy_info = await strategy_client.get_strategy_info(str(strategy_id))
+            return strategy_info.get("is_default", False)
+        except Exception as e:
+            logger.error(f"Strategy service API failed: {e}")
+            # CRITICAL: public.strategy table doesn't exist in order_service database
+            # Cannot use fallback - Strategy Service must be available
+            raise Exception(f"Strategy Service API unavailable, cannot validate strategy {strategy_id}: {e}")
 
     async def validate_strategy_modification(
         self,
@@ -751,18 +714,20 @@ class DefaultStrategyService:
         """
         strategy_id = await self.get_or_create_default_strategy(trading_account_id)
 
-        # Get strategy basic info
-        strategy_result = await self.db.execute(
-            text("""
-                SELECT strategy_id, strategy_name, trading_account_id, is_default, is_active
-                FROM public.strategy
-                WHERE strategy_id = :strategy_id
-            """),
-            {"strategy_id": strategy_id}
-        )
-        strategy_row = strategy_result.fetchone()
-
-        if not strategy_row:
+        # Get strategy basic info via Strategy Service API
+        # CRITICAL: public.strategy table doesn't exist in order_service database
+        try:
+            from ..clients.strategy_service_client import get_strategy_client
+            
+            strategy_client = await get_strategy_client()
+            strategy_info = await strategy_client.get_strategy_info(str(strategy_id))
+            
+            if not strategy_info:
+                return None
+                
+        except Exception as e:
+            logger.error(f"Strategy Service API failed: {e}")
+            # Cannot use fallback - Strategy Service must be available
             return None
 
         # Get open positions for M2M calculation
@@ -818,11 +783,11 @@ class DefaultStrategyService:
             })
 
         return {
-            "strategy_id": strategy_row[0],
-            "name": strategy_row[1],
-            "trading_account_id": strategy_row[2],
-            "is_default": strategy_row[3],
-            "is_active": strategy_row[4],
+            "strategy_id": strategy_id,
+            "name": strategy_info.get("name"),
+            "trading_account_id": strategy_info.get("trading_account_id"),
+            "is_default": strategy_info.get("is_default"),
+            "is_active": strategy_info.get("is_active"),
             "current_m2m": total_m2m,
             "instruments": positions,
             "instrument_count": len(positions)

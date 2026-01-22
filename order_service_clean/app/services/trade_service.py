@@ -6,14 +6,12 @@ Handles trade tracking, synchronization, and analytics.
 import logging
 from datetime import datetime, date, timedelta
 from typing import List, Optional, Dict, Any
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 
 from ..models.trade import Trade
 from ..database.redis_client import (
-    cache_trade,
-    get_cached_trade,
     invalidate_trade_cache
 )
 from .kite_client_multi import get_kite_client_for_account

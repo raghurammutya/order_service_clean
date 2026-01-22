@@ -4,8 +4,7 @@ Sync Job Model
 Tracks background synchronization jobs for trades, orders, and positions.
 """
 from datetime import datetime
-from typing import Optional
-from sqlalchemy import Column, Integer, String, DateTime, Date, Boolean, Text, JSON
+from sqlalchemy import Column, Integer, String, DateTime, Date, Text, JSON
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()

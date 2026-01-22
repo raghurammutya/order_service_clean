@@ -105,17 +105,31 @@ class HistoricalPnLBackfill:
         Returns:
             Set of dates with existing metrics
         """
-        async with self.async_session() as session:
-            result = await session.execute(
-                text("""
-                    SELECT metric_date
-                    FROM public.strategy_pnl_metrics
-                    WHERE strategy_id = :strategy_id
-                """),
-                {"strategy_id": strategy_id}
-            )
-
-            return {row.metric_date for row in result.fetchall()}
+        try:
+            # Import here to avoid circular imports
+            sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from app.clients.analytics_service_client import AnalyticsServiceClient
+            
+            # Get existing metrics via Analytics Service API
+            analytics_client = AnalyticsServiceClient()
+            existing_metrics = await analytics_client.get_strategy_pnl_metrics(str(strategy_id))
+            await analytics_client.close()
+            
+            return {datetime.fromisoformat(metric["metric_date"]).date() for metric in existing_metrics}
+        except Exception as e:
+            logger.warning(f"Analytics Service API failed: {e}, using fallback query")
+            
+            # Fallback to direct SQL query
+            async with self.async_session() as session:
+                result = await session.execute(
+                    text("""
+                        SELECT metric_date
+                        FROM public.strategy_pnl_metrics
+                        WHERE strategy_id = :strategy_id
+                    """),
+                    {"strategy_id": strategy_id}
+                )
+                return {row.metric_date for row in result.fetchall()}
 
     async def backfill_strategy_date_range(
         self,

@@ -6,19 +6,17 @@ Handles position tracking, updates, and queries.
 import logging
 from datetime import datetime, date
 from typing import List, Optional, Dict, Any, Union
-from sqlalchemy import select, update, and_, or_, text
+from sqlalchemy import select, and_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 
 from ..models.position import Position, PositionSource
 from ..database.redis_client import (
-    cache_position,
-    get_cached_position,
     invalidate_position_cache
 )
 from .kite_client_multi import get_kite_client_for_account
 from .brokerage_service import BrokerageService
-from .default_strategy_service import DefaultStrategyService, get_or_create_default_strategy
+from .default_strategy_service import get_or_create_default_strategy
 from .subscription_manager import SubscriptionManager
 from decimal import Decimal
 
@@ -101,7 +99,10 @@ class PositionService:
 
     async def _get_instrument_token(self, symbol: str, exchange: str) -> Optional[int]:
         """
-        Look up instrument_token from instrument_registry.
+        Look up instrument_token from Market Data Service API.
+
+        CRITICAL: public.instrument_registry table doesn't exist in order_service database.
+        Use Market Data Service API instead.
 
         Args:
             symbol: Trading symbol (e.g., RELIANCE, NIFTY25D0226400CE)
@@ -111,21 +112,21 @@ class PositionService:
             Instrument token if found, None otherwise
         """
         try:
-            result = await self.db.execute(text("""
-                SELECT instrument_token
-                FROM public.instrument_registry
-                WHERE symbol = :symbol
-                  AND exchange = :exchange
-                  AND is_active = true
-                LIMIT 1
-            """), {"symbol": symbol, "exchange": exchange})
-
-            row = result.fetchone()
-            if row:
-                return row.instrument_token
-            return None
+            from ..clients.market_data_service_client import get_market_data_client
+            
+            market_client = await get_market_data_client()
+            instrument_token = await market_client.get_instrument_token(symbol, exchange)
+            
+            if instrument_token:
+                logger.debug(f"Found instrument_token {instrument_token} for {symbol}/{exchange}")
+            else:
+                logger.warning(f"No instrument_token found for {symbol}/{exchange}")
+                
+            return instrument_token
+            
         except Exception as e:
-            logger.warning(f"Failed to lookup instrument_token for {symbol}/{exchange}: {e}")
+            logger.warning(f"Market Data Service API failed for {symbol}/{exchange}: {e}")
+            # Fallback: Return None to indicate missing token
             return None
 
     # ==========================================

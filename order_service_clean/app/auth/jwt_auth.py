@@ -11,7 +11,6 @@ from typing import Dict, Any, Optional
 from urllib.parse import urlparse
 
 import jwt
-from jwt import PyJWKClient
 import httpx
 from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials

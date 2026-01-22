@@ -4,9 +4,7 @@ Lot Size Service
 Provides lot size and multiplier information for instruments.
 """
 import logging
-from typing import Dict, Optional, Any
 from decimal import Decimal
-from ..config.settings import settings
 
 logger = logging.getLogger(__name__)
 

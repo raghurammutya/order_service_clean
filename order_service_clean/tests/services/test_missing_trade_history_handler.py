@@ -5,7 +5,7 @@ Tests detection and handling of missing trade history with reconstruction workfl
 
 import pytest
 from decimal import Decimal
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch, MagicMock
 
 from order_service.app.services.missing_trade_history_handler import (

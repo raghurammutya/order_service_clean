@@ -10,7 +10,6 @@ from datetime import datetime
 from typing import Optional
 from contextlib import asynccontextmanager
 
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_session_maker
 from ..services.reconciliation_service import ReconciliationService

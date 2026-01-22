@@ -5,11 +5,7 @@ This file demonstrates the proper testing patterns for the TokenRefresher servic
 based on the actual implementation in /home/stocksladmin/_tmp_ml/token_manager/app/services/refresher.py
 """
 import pytest
-import asyncio
-import time
-from datetime import datetime, timezone, timedelta
-from unittest.mock import MagicMock, patch, AsyncMock
-from zoneinfo import ZoneInfo
+from unittest.mock import MagicMock, patch
 
 
 class TestTokenRefresherFixedPatterns:

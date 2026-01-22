@@ -10,7 +10,6 @@ This script:
 """
 import asyncio
 import sys
-from datetime import datetime
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 

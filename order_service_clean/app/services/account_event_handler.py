@@ -8,8 +8,7 @@ Implements production-grade async patterns and proper error handling.
 
 import logging
 from typing import Dict, Any
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 # Import from common module with proper path
 import sys

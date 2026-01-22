@@ -3,7 +3,6 @@ Test configuration externalization - validates no hardcoded values remain
 Critical for production signoff - proves environment-specific deployment works
 """
 import pytest
-import os
 from unittest.mock import patch
 
 
@@ -57,8 +56,6 @@ class TestConfigurationExternalization:
     @pytest.mark.unit
     def test_rate_limits_configurable(self):
         """Test rate limits are configurable"""
-        from app.services.redis_daily_counter import RedisDailyOrderCounter
-        from app.services.rate_limiter import HardRefreshRateLimiter
         
         # Test daily order limit
         with patch.dict('os.environ', {'DAILY_ORDER_LIMIT': '5000'}):

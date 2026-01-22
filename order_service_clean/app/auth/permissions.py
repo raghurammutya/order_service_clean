@@ -14,30 +14,21 @@ ARCHITECTURE COMPLIANCE:
 import logging
 from typing import List, Optional
 import httpx
-import os
 
 logger = logging.getLogger(__name__)
 
-# Configuration from config_service (P1 - Config Service Integration)
-# Import config client to fetch secrets
+# Configuration from order service config-compliant settings
 try:
-    import sys
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
-    from common.config_service.client import ConfigServiceClient
-
-    _config_client = ConfigServiceClient(
-        service_name="order_service",
-        environment=os.getenv("ENVIRONMENT", "prod")
-    )
-    INTERNAL_API_KEY = _config_client.get_secret("INTERNAL_API_KEY", required=True)
-    logger.info("✓ INTERNAL_API_KEY loaded from config_service")
+    # Use order service's config-compliant settings
+    from ..config.settings import settings
+    INTERNAL_API_KEY = settings.internal_api_key
+    USER_SERVICE_URL = settings.jwks_url.replace("/auth/.well-known/jwks.json", "")  # Extract base URL
+    logger.info("✓ Service URLs and API key loaded from order service config")
 except Exception as e:
-    logger.error(f"Failed to load INTERNAL_API_KEY from config_service: {e}")
-    # Fail-fast: INTERNAL_API_KEY is required for user-service communication
+    logger.error(f"Failed to load service config from order service settings: {e}")
+    # Fail-fast: These are required for user-service communication
     INTERNAL_API_KEY = ""
-
-# USER_SERVICE_URL from environment (set by docker-compose)
-USER_SERVICE_URL = os.getenv("USER_SERVICE_URL", "http://localhost:8011")
+    USER_SERVICE_URL = "http://localhost:8011"  # Test fallback only
 
 # Performance tuning
 PERMISSION_CHECK_TIMEOUT = 2.0  # 2 second timeout

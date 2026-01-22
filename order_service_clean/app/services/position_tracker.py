@@ -8,7 +8,7 @@ import logging
 from datetime import date
 from decimal import Decimal
 from typing import Optional
-from sqlalchemy import text, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.position import Position

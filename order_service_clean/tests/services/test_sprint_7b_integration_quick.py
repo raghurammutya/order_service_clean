@@ -6,7 +6,7 @@ Tests core wiring and integration points for Sprint 7B services
 import pytest
 from decimal import Decimal
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 
 
 @pytest.mark.asyncio
@@ -47,7 +47,6 @@ class TestSprint7BIntegration:
     async def test_manual_attribution_validator_wiring(self, mock_db_session):
         """Test that manual attribution validator is integrated in apply process."""
         from order_service.app.services.manual_attribution_service import ManualAttributionService
-        from order_service.app.services.manual_attribution_apply_validator import ManualAttributionApplyValidator
         
         # Mock a resolved case
         mock_case = MagicMock()
@@ -81,7 +80,6 @@ class TestSprint7BIntegration:
     async def test_exit_context_matcher_wiring(self, mock_db_session):
         """Test that exit context matcher is used in trade service."""
         from order_service.app.services.trade_service import TradeService
-        from order_service.app.services.exit_context_matcher import ExitContextMatcher
         
         # Create mock trade
         mock_trade = MagicMock()
@@ -110,7 +108,6 @@ class TestSprint7BIntegration:
     async def test_transfer_instruction_generator_wiring(self, mock_db_session):
         """Test that transfer instruction generator is used in reconciliation transfers."""
         from order_service.app.services.reconciliation_driven_transfers import ReconciliationDrivenTransferService
-        from order_service.app.services.transfer_instruction_generator import TransferInstructionGenerator
         
         # Mock transfer batch
         mock_transfer_batch = MagicMock()
@@ -158,14 +155,14 @@ class TestSprint7BIntegration:
     async def test_import_all_sprint7b_services(self):
         """Test that all Sprint 7B services can be imported without errors."""
         try:
-            from order_service.app.services.exit_attribution_policy import ExitAttributionPolicyService
-            from order_service.app.services.manual_attribution_apply_validator import ManualAttributionApplyValidator
-            from order_service.app.services.exit_context_matcher import ExitContextMatcher
-            from order_service.app.services.transfer_instruction_generator import TransferInstructionGenerator
-            from order_service.app.services.redis_unavailable_handoff_manager import RedisUnavailableHandoffManager
-            from order_service.app.services.handoff_concurrency_manager import HandoffConcurrencyManager
-            from order_service.app.services.missing_trade_history_handler import MissingTradeHistoryHandler
-            from order_service.app.services.external_order_tagging_idempotency import ExternalOrderTaggingIdempotency
+            import order_service.app.services.exit_attribution_policy  # noqa: F401 - import test only
+            import order_service.app.services.manual_attribution_apply_validator  # noqa: F401 - import test only
+            import order_service.app.services.exit_context_matcher  # noqa: F401 - import test only
+            import order_service.app.services.transfer_instruction_generator  # noqa: F401 - import test only
+            import order_service.app.services.redis_unavailable_handoff_manager  # noqa: F401 - import test only
+            import order_service.app.services.handoff_concurrency_manager  # noqa: F401 - import test only
+            import order_service.app.services.missing_trade_history_handler  # noqa: F401 - import test only
+            import order_service.app.services.external_order_tagging_idempotency  # noqa: F401 - import test only
             
             # All imports successful
             assert True

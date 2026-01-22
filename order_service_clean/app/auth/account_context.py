@@ -20,7 +20,7 @@ Date: 2025-11-25
 
 import logging
 from typing import Dict, Any, Optional
-from fastapi import Depends, HTTPException, Header, Query
+from fastapi import Depends, Header, Query
 
 # Import from parent auth module to use the correct implementation (gateway_auth or jwt_auth)
 from . import get_current_user, get_current_user_optional

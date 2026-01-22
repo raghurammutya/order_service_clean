@@ -7,7 +7,7 @@ decision capture, and resolution application.
 
 import pytest
 from decimal import Decimal
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,8 +16,7 @@ from order_service.app.services.manual_attribution_service import (
     AttributionCase,
     AttributionDecision,
     AttributionStatus,
-    AttributionPriority,
-    create_attribution_case
+    AttributionPriority
 )
 
 

@@ -6,15 +6,12 @@ Sprint 7B requirement: Explicit exit attribution policy enforcement
 import pytest
 from decimal import Decimal
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
 
 from order_service.app.services.exit_attribution_policy import (
     ExitAttributionPolicyService,
     ExitAttributionPolicy,
     AttributionDecision,
-    ExitContext,
-    PositionCandidate,
-    AttributionPolicyResult
+    ExitContext
 )
 
 

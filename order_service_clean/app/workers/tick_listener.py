@@ -8,7 +8,6 @@ real-time LTP updates instead of 5-minute polling.
 import asyncio
 import json
 import logging
-import os
 from typing import Dict, Set, Optional, Any
 from datetime import datetime
 from decimal import Decimal
@@ -46,8 +45,10 @@ class TickListener:
             batch_size: Maximum number of updates to batch
             batch_interval_ms: Maximum time (ms) to wait before flushing batch
         """
-        self.redis_url = redis_url or os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        self.database_url = database_url or os.getenv("DATABASE_URL")
+        # Use settings from config-service for URL configuration
+        from ..config.settings import settings
+        self.redis_url = redis_url or settings.ticker_redis_url
+        self.database_url = database_url or settings.database_url
         self.batch_size = batch_size
         self.batch_interval_ms = batch_interval_ms
 

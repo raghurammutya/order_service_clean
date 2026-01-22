@@ -22,9 +22,7 @@ from order_service.app.services.partial_exit_attribution_service import (
     AllocationMethod
 )
 from order_service.app.services.manual_attribution_service import (
-    ManualAttributionService,
-    AttributionPriority,
-    AttributionDecision
+    ManualAttributionService
 )
 from order_service.app.services.handoff_state_machine import (
     HandoffStateMachine,

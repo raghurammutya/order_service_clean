@@ -5,15 +5,12 @@ Tests robust exit context matching with multi-fill orders, tolerance-based algor
 
 import pytest
 from decimal import Decimal
-from datetime import datetime, timezone, timedelta
-from unittest.mock import AsyncMock, patch, MagicMock
+from datetime import datetime, timedelta
 
 from order_service.app.services.exit_context_matcher import (
     ExitContextMatcher,
     ExitContextConfig,
-    ExitMatchResult,
-    MatchQuality,
-    TradeMatch
+    MatchQuality
 )
 
 

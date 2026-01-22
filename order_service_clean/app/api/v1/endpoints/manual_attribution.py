@@ -18,9 +18,7 @@ from ....auth.account_context import AuthContext
 from ....database import get_session
 from ....services.manual_attribution_service import (
     ManualAttributionService,
-    AttributionCase,
     AttributionDecision,
-    AttributionStatus,
     AttributionPriority
 )
 

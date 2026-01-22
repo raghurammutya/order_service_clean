@@ -5,13 +5,12 @@ Tests pre-apply validation for manual attribution decisions with transfer safety
 
 import pytest
 from decimal import Decimal
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch, MagicMock
+from datetime import datetime
+from unittest.mock import patch
 
 from order_service.app.services.manual_attribution_apply_validator import (
     ManualAttributionApplyValidator,
     ManualAttributionDecision,
-    ValidationResult,
     ValidationFailure,
     FailureType
 )

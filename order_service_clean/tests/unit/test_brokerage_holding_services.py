@@ -1,4 +1,3 @@
-import asyncio
 import pytest
 
 from order_service.app.services.brokerage_service import BrokerageService

@@ -4,13 +4,11 @@ Test Suite for Order Audit Trail
 Tests audit logging for all order state transitions.
 """
 import pytest
-from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.order_service import OrderService
 from app.services.audit_service import OrderAuditService
 from app.models.order import Order
-from app.models.order_state_history import OrderStateHistory
 
 
 class TestAuditTrail:

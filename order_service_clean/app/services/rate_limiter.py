@@ -5,7 +5,6 @@ Uses Redis for distributed rate limiting across multiple instances.
 Enforces 1 hard refresh per minute per account.
 """
 import logging
-import os
 from datetime import datetime, timezone
 from typing import Optional, Tuple
 import redis.asyncio as aioredis

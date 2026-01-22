@@ -6,7 +6,7 @@ Implements SEBI audit trail requirements.
 """
 from datetime import datetime
 from typing import Optional, Dict, Any
-from sqlalchemy import Column, Integer, String, Text, DateTime, Index, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, Index
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 

@@ -6,7 +6,7 @@ Built on Phase 1 security and stability features.
 """
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Response, Depends
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_client import make_asgi_app, Counter, Histogram, Gauge
@@ -26,10 +26,8 @@ from .middleware import CorrelationIDMiddleware, ErrorHandlerMiddleware
 
 # SECURITY: Import security middleware from common module
 import sys
-import os
-# Add path to common module - configurable for different environments
-common_module_path = os.getenv("COMMON_MODULE_PATH", "/home/stocksadmin/agent-workspace/codex/ML")
-sys.path.insert(0, common_module_path)
+# Add path to common module - from config-service
+sys.path.insert(0, settings.common_module_path)
 try:
     from common.security_middleware import SecurityHeadersMiddleware
     HAS_SECURITY_MIDDLEWARE = True
@@ -216,9 +214,7 @@ async def lifespan(app: FastAPI):
     # Initialize calendar service client (optional - for dynamic holidays)
     try:
         from .services.market_hours import initialize_calendar_client
-        import os
-        calendar_service_url = os.getenv("CALENDAR_SERVICE_URL", "http://calendar-service:8013")
-        calendar_connected = await initialize_calendar_client(calendar_service_url)
+        calendar_connected = await initialize_calendar_client(settings.calendar_service_url)
         if calendar_connected:
             logger.info("✅ Calendar service connected for market hours")
         else:
@@ -265,7 +261,7 @@ async def lifespan(app: FastAPI):
 
     # Recover position subscriptions for existing open positions
     try:
-        from .services.subscription_manager import SubscriptionManager, get_subscription_manager
+        from .services.subscription_manager import get_subscription_manager
         from .database import get_db
 
         # Get a database session for subscription recovery
@@ -294,6 +290,20 @@ async def lifespan(app: FastAPI):
 
     # Store event handler readiness for health checks
     app.state.account_events_ready = account_event_handler_started
+
+    # Start Redis usage monitoring
+    redis_monitoring_started = False
+    try:
+        from .services.redis_usage_monitor import start_redis_monitoring
+        await start_redis_monitoring()
+        redis_monitoring_started = True
+        logger.info("✅ Redis usage monitoring started")
+    except Exception as e:
+        logger.error(f"Failed to start Redis monitoring: {e}")
+        logger.warning("⚠️  Redis saturation detection disabled")
+
+    # Store Redis monitoring readiness for health checks
+    app.state.redis_monitoring_ready = redis_monitoring_started
 
     logger.info("Order Service started successfully")
 
@@ -389,6 +399,17 @@ async def lifespan(app: FastAPI):
             logger.warning("⚠ Rate limiter shutdown timed out")
         except Exception as e:
             logger.warning(f"⚠ Rate limiter shutdown error: {e}")
+
+        # Stop Redis monitoring (2s timeout)
+        logger.info("Stopping Redis monitoring...")
+        try:
+            from .services.redis_usage_monitor import stop_redis_monitoring
+            await asyncio.wait_for(stop_redis_monitoring(), timeout=2.0)
+            logger.info("✓ Redis monitoring stopped")
+        except asyncio.TimeoutError:
+            logger.warning("⚠ Redis monitoring shutdown timed out")
+        except Exception as e:
+            logger.warning(f"⚠ Redis monitoring shutdown error: {e}")
 
         # Close database (5s timeout)
         logger.info("Closing database connections...")
@@ -764,6 +785,38 @@ async def rate_limiter_health():
             }
         }
     )
+
+
+@app.get("/health/redis")
+async def redis_health_check():
+    """Redis usage and saturation monitoring endpoint"""
+    try:
+        from .services.redis_usage_monitor import get_redis_health_summary
+        
+        health_summary = await get_redis_health_summary()
+        is_healthy = health_summary["health"]["is_healthy"]
+        
+        status_code = 200 if is_healthy else 503
+        
+        return JSONResponse(
+            status_code=status_code,
+            content={
+                "status": "healthy" if is_healthy else "unhealthy",
+                "redis_health": health_summary["health"],
+                "redis_usage": health_summary["usage"]
+            }
+        )
+        
+    except Exception as e:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "error",
+                "error": f"Failed to get Redis health: {e}",
+                "redis_health": {"is_healthy": False},
+                "redis_usage": {}
+            }
+        )
 
 # =========================================
 # PROMETHEUS METRICS ENDPOINT

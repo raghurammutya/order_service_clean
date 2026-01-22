@@ -16,7 +16,6 @@ error responses with correlation IDs.
 """
 import logging
 import traceback
-from typing import Union
 
 from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse

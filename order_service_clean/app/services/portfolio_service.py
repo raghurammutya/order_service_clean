@@ -11,8 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 
 from ..models.portfolio import Portfolio, PortfolioAccount, PortfolioStrategy
-from ..database.redis_client import get_redis
-import json
 
 logger = logging.getLogger(__name__)
 

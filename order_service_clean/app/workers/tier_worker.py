@@ -8,7 +8,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
-from ..services.account_tier_service import AccountTierService, SyncTier
+from ..services.account_tier_service import AccountTierService
 from ..database.connection import get_async_session
 
 logger = logging.getLogger(__name__)

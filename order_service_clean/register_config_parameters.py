@@ -7,8 +7,6 @@ Run this script to populate the config service with necessary parameters.
 """
 import os
 import sys
-import json
-from typing import Dict, Any
 
 # Add project root to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
@@ -94,6 +92,17 @@ def register_order_service_parameters():
         "ORDER_SERVICE_TEST_AUTH_MODE": {"value": False, "type": "bool", "description": "Test auth mode (dev only)"},
         "ORDER_SERVICE_GATEWAY_SECRET": {"value": "", "type": "secret", "description": "API gateway secret"},
         "ORDER_SERVICE_TRUST_GATEWAY_HEADERS": {"value": False, "type": "bool", "description": "Trust gateway headers"},
+        
+        # Sync Configuration (Tiered Account Sync)
+        "ORDER_SERVICE_SYNC_INTERVAL_HOT": {"value": 30, "type": "int", "description": "HOT tier sync interval (seconds) - active positions"},
+        "ORDER_SERVICE_SYNC_BATCH_SIZE_HOT": {"value": 50, "type": "int", "description": "HOT tier batch size - active positions"},
+        "ORDER_SERVICE_SYNC_INTERVAL_WARM": {"value": 120, "type": "int", "description": "WARM tier sync interval (seconds) - today's activity"},
+        "ORDER_SERVICE_SYNC_BATCH_SIZE_WARM": {"value": 100, "type": "int", "description": "WARM tier batch size - today's activity"},
+        "ORDER_SERVICE_SYNC_INTERVAL_COLD": {"value": 900, "type": "int", "description": "COLD tier sync interval (seconds) - holdings only"},
+        "ORDER_SERVICE_SYNC_BATCH_SIZE_COLD": {"value": 200, "type": "int", "description": "COLD tier batch size - holdings only"},
+        
+        # System Paths
+        "ORDER_SERVICE_COMMON_MODULE_PATH": {"value": "/home/stocksadmin/agent-workspace/codex/ML", "type": "string", "description": "Path to common module for security middleware"},
         
         # Production Hosts
         "ORDER_SERVICE_PRODUCTION_HOST_HTTP": {"value": "http://5.223.52.98", "type": "string", "description": "Production HTTP host"},

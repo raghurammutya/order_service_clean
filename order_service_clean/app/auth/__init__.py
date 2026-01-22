@@ -14,11 +14,15 @@ The gateway auth pattern is preferred because:
 """
 import os
 
-# Check if test mode is enabled (for ACL testing)
-TEST_AUTH_MODE = os.getenv("TEST_AUTH_MODE", "false").lower() == "true"
-
-# Check if we should trust gateway headers
-TRUST_GATEWAY_HEADERS = os.getenv("TRUST_GATEWAY_HEADERS", "false").lower() == "true"
+# Check if test mode is enabled (for ACL testing) - from config service
+try:
+    from ..config.settings import settings
+    TEST_AUTH_MODE = settings.test_auth_mode
+    TRUST_GATEWAY_HEADERS = settings.trust_gateway_headers
+except Exception:
+    # Fallback for bootstrap/test environments only
+    TEST_AUTH_MODE = os.getenv("TEST_AUTH_MODE", "false").lower() == "true"
+    TRUST_GATEWAY_HEADERS = os.getenv("TRUST_GATEWAY_HEADERS", "false").lower() == "true"
 
 if TEST_AUTH_MODE:
     # Use test auth - ONLY FOR TESTING ACL INTEGRATION
@@ -26,7 +30,6 @@ if TEST_AUTH_MODE:
         get_current_user,
         get_current_user_optional,
         require_admin,
-        require_role,
         require_permission,
         verify_jwt_token,
         cleanup,
@@ -37,7 +40,6 @@ elif TRUST_GATEWAY_HEADERS:
         get_current_user,
         get_current_user_optional,
         require_admin,
-        require_role,
         require_permission,
     )
     # These are not needed with gateway auth but imported for compatibility

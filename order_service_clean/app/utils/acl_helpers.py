@@ -5,8 +5,6 @@ Provides utility functions for ACL permission checks and resource filtering.
 """
 
 import logging
-import sys
-import os
 from typing import List, Optional, Dict, Any
 
 # Handle missing common module in test environment
