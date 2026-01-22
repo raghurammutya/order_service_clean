@@ -32,11 +32,13 @@ from ..config.settings import settings
 
 logger = logging.getLogger(__name__)
 
-# Gateway secret - must match API Gateway's GATEWAY_SECRET
-GATEWAY_SECRET = os.getenv("GATEWAY_SECRET", "gateway_secret_2024_prod")
-
-# Whether to trust gateway headers (set to true when using API Gateway)
-TRUST_GATEWAY_HEADERS = os.getenv("TRUST_GATEWAY_HEADERS", "false").lower() == "true"
+# Gateway secret - from config service
+try:
+    GATEWAY_SECRET = getattr(settings, 'gateway_secret', 'gateway_secret_2024_prod')
+    TRUST_GATEWAY_HEADERS = getattr(settings, 'trust_gateway_headers', False)
+except Exception:
+    # Config service not available - fail fast
+    raise RuntimeError("Settings module required - config service unavailable")
 
 # HTTP Bearer for legacy auth
 security = HTTPBearer(auto_error=False)

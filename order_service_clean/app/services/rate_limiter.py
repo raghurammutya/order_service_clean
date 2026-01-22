@@ -18,7 +18,11 @@ logger = logging.getLogger(__name__)
 class HardRefreshRateLimiter:
     """Rate limiter for hard refresh API."""
 
-    RATE_LIMIT_SECONDS = int(os.getenv("HARD_REFRESH_RATE_LIMIT_SECONDS", "60"))  # 1 minute
+    @property
+    def RATE_LIMIT_SECONDS(self) -> int:
+        """Get rate limit from config service"""
+        from ..config.settings import settings
+        return getattr(settings, 'hard_refresh_rate_limit_seconds', 60)
     KEY_PREFIX = "hard_refresh:"
 
     def __init__(self, redis_client: aioredis.Redis):

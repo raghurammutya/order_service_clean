@@ -32,7 +32,7 @@ import httpx
 from kiteconnect import KiteConnect
 from kiteconnect.exceptions import TokenException
 
-from ..config.settings import settings, _get_from_config_service
+from ..config.settings import settings
 from .kite_account_rate_limiter import (
     KiteOperation,
     RateLimitExceeded,
@@ -130,15 +130,20 @@ async def get_all_trading_accounts() -> Dict[int, Dict[str, str]]:
         if account_ids_config:
             known_account_ids = account_ids_config
         else:
-            # Try to get from config service
-            config_value = _get_from_config_service("TRADING_ACCOUNT_IDS", required=False)
-            if config_value:
-                # Parse comma-separated list: "1,2,3" -> [1, 2, 3]
-                known_account_ids = [int(x.strip()) for x in config_value.split(",") if x.strip().isdigit()]
-            else:
-                # Minimal fallback - only account 1 (primary)
-                logger.warning("No trading account IDs configured, using minimal fallback [1]")
-                known_account_ids = [1]
+            # Try to get from config service  
+            try:
+                from ..config.settings import _get_config_value
+                config_value = _get_config_value("TRADING_ACCOUNT_IDS", required=False)
+                if config_value:
+                    # Parse comma-separated list: "1,2,3" -> [1, 2, 3]
+                    known_account_ids = [int(x.strip()) for x in config_value.split(",") if x.strip().isdigit()]
+                else:
+                    # Minimal fallback - only account 1 (primary)
+                    logger.warning("No trading account IDs configured, using minimal fallback [1]")
+                    known_account_ids = [1]
+            except ImportError:
+                # Config service not available - fail fast
+                raise RuntimeError("Settings module required - config service unavailable")
                 
     except Exception as e:
         logger.error(f"Failed to load trading account IDs from config: {e}")
@@ -177,17 +182,9 @@ class MultiAccountKiteClient:
         # (account_context returns string from header, but mapping uses int keys)
         self.trading_account_id = int(trading_account_id) if isinstance(trading_account_id, str) else trading_account_id
 
-        # Use settings for token manager config (reads from .env via pydantic_settings)
-        # Fallback to config service if not set in settings
-        self.token_manager_url = settings.token_manager_url or _get_from_config_service(
-            "TOKEN_MANAGER_URL",
-            "http://localhost:8088"
-        )
-        self.token_manager_api_key = settings.token_manager_api_key or _get_from_config_service(
-            "TOKEN_MANAGER_INTERNAL_API_KEY",
-            "",
-            is_secret=True
-        )
+        # Use settings for token manager config (config-service only - no fallbacks)
+        self.token_manager_url = settings.token_manager_url
+        self.token_manager_api_key = settings.internal_api_key
 
         # Sprint 1: Account config will be resolved dynamically via async factory
         # Initialize with placeholders, will be populated by async factory method

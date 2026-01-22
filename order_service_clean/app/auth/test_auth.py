@@ -15,13 +15,24 @@ from fastapi import Header, HTTPException, Request
 logger = logging.getLogger(__name__)
 
 # Check if test mode is enabled - ONLY for development/testing environments
+# Use bootstrap triad from docker-compose environment variables
 ENVIRONMENT = os.getenv("ENVIRONMENT", "production")
-TEST_AUTH_MODE = (
-    os.getenv("TEST_AUTH_MODE", "false").lower() == "true" and 
-    ENVIRONMENT in ["development", "testing", "staging"]
-)
 
-# Fail-safe: Disable test auth in production regardless of environment variables
+# Test auth mode - get from config service (when available) or fallback to env
+try:
+    from ..config.settings import settings
+    TEST_AUTH_MODE = (
+        ENVIRONMENT in ["development", "testing", "staging"] and
+        getattr(settings, 'test_auth_mode', False)
+    )
+except ImportError:
+    # Config service not available - fail fast in production
+    if ENVIRONMENT == "production":
+        raise RuntimeError("Settings module required in production - config service unavailable")
+    # Allow minimal fallback in development only
+    TEST_AUTH_MODE = False
+
+# Fail-safe: Disable test auth in production regardless of configuration
 if ENVIRONMENT == "production" and TEST_AUTH_MODE:
     logger.critical("SECURITY ALERT: Test auth disabled in production environment")
     TEST_AUTH_MODE = False

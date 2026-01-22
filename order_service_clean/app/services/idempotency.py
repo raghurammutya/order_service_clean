@@ -37,7 +37,12 @@ class IdempotencyService:
 
         # Default to fail-closed for safety (prevents duplicate orders)
         if fail_closed is None:
-            self.fail_closed = os.getenv("IDEMPOTENCY_FAIL_CLOSED", "true").lower() == "true"
+            try:
+                from ..config.settings import settings
+                self.fail_closed = getattr(settings, 'idempotency_fail_closed', True)
+            except ImportError:
+                # Config service not available - fail fast
+                raise RuntimeError("Settings module required - config service unavailable")
         else:
             self.fail_closed = fail_closed
 

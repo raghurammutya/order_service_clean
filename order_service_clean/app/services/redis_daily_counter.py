@@ -35,14 +35,31 @@ class RedisDailyCounter:
     """
 
     KEY_PREFIX = "kite:daily_orders"
-    DEFAULT_LIMIT = int(os.getenv("DAILY_ORDER_LIMIT", "3000"))
-    DEFAULT_RESET_TIME = os.getenv("DAILY_RESET_TIME", "15:30")  # Market close IST
+    @property
+    def DEFAULT_LIMIT(self) -> int:
+        """Get daily order limit from config service"""
+        try:
+            from ..config.settings import settings
+            return getattr(settings, 'daily_order_limit', 3000)
+        except ImportError:
+            # Config service not available - fail fast
+            raise RuntimeError("Settings module required - config service unavailable")
+    
+    @property 
+    def DEFAULT_RESET_TIME(self) -> str:
+        """Get daily reset time from config service"""
+        try:
+            from ..config.settings import settings
+            return getattr(settings, 'daily_reset_time', "15:30")
+        except ImportError:
+            # Config service not available - fail fast
+            raise RuntimeError("Settings module required - config service unavailable")
 
     def __init__(
         self,
         redis_client,
-        daily_limit: int = DEFAULT_LIMIT,
-        reset_time: str = DEFAULT_RESET_TIME,
+        daily_limit: Optional[int] = None,
+        reset_time: Optional[str] = None,
     ):
         """
         Initialize daily counter.
@@ -53,8 +70,8 @@ class RedisDailyCounter:
             reset_time: Reset time in HH:MM format IST (default: 15:30)
         """
         self.redis = redis_client
-        self.daily_limit = daily_limit
-        self.reset_time = reset_time
+        self.daily_limit = daily_limit if daily_limit is not None else self.DEFAULT_LIMIT
+        self.reset_time = reset_time if reset_time is not None else self.DEFAULT_RESET_TIME
         self._parse_reset_time()
 
         # Statistics

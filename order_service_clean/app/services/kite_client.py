@@ -18,7 +18,7 @@ from typing import Optional, Dict, Any
 import httpx
 from kiteconnect import KiteConnect
 
-from ..config.settings import settings, _get_from_config_service
+from ..config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -129,11 +129,8 @@ class KiteOrderClient:
         self.api_key = settings.kite_api_key  # Fallback, will be updated from token_manager
         self.account_id = settings.kite_account_id
 
-        # Try config service first, then env vars
-        self.token_manager_url = _get_from_config_service(
-            "TOKEN_MANAGER_URL",
-            os.getenv("TOKEN_MANAGER_URL", "http://localhost:8086")
-        )
+        # Get token manager URL from settings (config-service compliant)
+        self.token_manager_url = settings.token_manager_url
         # ARCHITECTURE PRINCIPLE #24: Use single INTERNAL_API_KEY for all service-to-service auth
         self.internal_api_key = settings.internal_api_key
 
