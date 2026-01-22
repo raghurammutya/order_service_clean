@@ -184,6 +184,7 @@ async def get_validation_issues(
     entity_type: Optional[str] = Query(None, description="Filter by entity type (order, position, trade)"),
     auto_fixable_only: bool = Query(False, description="Show only auto-fixable issues"),
     limit: int = Query(100, le=500, description="Maximum number of issues to return"),
+    offset: int = Query(0, ge=0, description="Number of issues to skip"),
     session: AsyncSession = Depends(get_async_session),
     current_user: dict = Depends(get_current_user)
 ) -> List[TaggingIssueResponse]:
@@ -232,7 +233,7 @@ async def get_validation_issues(
                 LIMIT :limit OFFSET :offset
             """)
             
-            result = await db.execute(query, {
+            result = await session.execute(query, {
                 "validation_id": validation_id,
                 "user_id": current_user["user_id"],
                 "limit": min(limit, 100),  # Cap at 100 per request
@@ -301,6 +302,8 @@ async def auto_fix_tagging_issues(
         )
         
         # Load stored validation results instead of re-running validation
+        report = None  # Initialize report variable
+        
         try:
             from sqlalchemy import text
             
@@ -339,6 +342,15 @@ async def auto_fix_tagging_issues(
             })
             
             auto_fixable_issues = list(issues_result.fetchall())
+            
+            # Build report structure from stored results
+            report = {
+                "validation_id": request.validation_id,
+                "trading_account_id": trading_account_id,
+                "symbol": symbol,
+                "status": status,
+                "auto_fixable_issues": auto_fixable_issues
+            }
             
         except Exception as db_error:
             logger.warning(f"Failed to load stored validation results: {db_error}")

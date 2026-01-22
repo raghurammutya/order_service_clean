@@ -97,11 +97,18 @@ class TestBusinessLogicImplementation:
         mock_db.execute.return_value = mock_result
         
         # Should return actual stored issues, not empty list
-        issues = await get_validation_issues(
-            validation_id="test-validation-id",
-            limit=10, offset=0,
-            db=mock_db, current_user=current_user
-        )
+        with patch('app.api.v1.endpoints.external_order_validation.get_async_session') as mock_session_dep:
+            with patch('app.api.v1.endpoints.external_order_validation.get_current_user') as mock_user_dep:
+                mock_session_dep.return_value = mock_db
+                mock_user_dep.return_value = current_user
+                
+                issues = await get_validation_issues(
+                    validation_id="test-validation-id",
+                    limit=10, 
+                    offset=0,
+                    session=mock_db, 
+                    current_user=current_user
+                )
         
         assert len(issues) == 2
         assert issues[0]["issue_type"] == "orphan_order"
