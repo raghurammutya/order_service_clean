@@ -13,14 +13,13 @@ Key Features:
 """
 
 import logging
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone, timedelta
 from enum import Enum
 from dataclasses import dataclass
 from uuid import uuid4
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -117,53 +116,39 @@ class HandoffStateMachine:
         self._concurrency_manager = HandoffConcurrencyManager(db)
 
     def _get_redis_config(self) -> Dict[str, Any]:
-        """Get Redis configuration from environment variables or config service."""
+        """Get Redis configuration from order service config settings."""
         try:
-            # Try to get from config service first
-            from common.config_service.client import ConfigServiceClient
-            client = ConfigServiceClient()
+            # Use order service settings (already config-service compliant)
+            from ..config.settings import settings
+            redis_url = settings.redis_url
             
-            # Get environment from ENVIRONMENT variable, defaulting to prod
-            environment = os.getenv("ENVIRONMENT", "prod")
-            redis_url = client.get_secret("REDIS_URL", environment=environment)
-            if redis_url:
-                # Parse Redis URL (format: redis://host:port/db)
-                import re
-                match = re.match(r'redis://([^:]+):(\d+)(?:/(\d+))?', redis_url)
-                if match:
-                    host, port, db_num = match.groups()
-                    return {
-                        "host": host,
-                        "port": int(port),
-                        "db": int(db_num) if db_num else 0,
-                        "decode_responses": True
-                    }
-        except (ImportError, Exception) as e:
-            logger.warning(f"Could not get Redis config from config service: {e}")
+            # Parse Redis URL (format: redis://host:port/db)
+            import re
+            match = re.match(r'redis://([^:]+):(\d+)(?:/(\d+))?', redis_url)
+            if match:
+                host, port, db_num = match.groups()
+                return {
+                    "host": host,
+                    "port": int(port),
+                    "db": int(db_num) if db_num else 0,
+                    "decode_responses": True
+                }
+            else:
+                logger.error(f"Invalid Redis URL format: {redis_url}")
+                
+        except ImportError as e:
+            logger.error(f"Could not import Redis config from order service settings: {e}")
+        except (ConnectionError, TimeoutError, OSError) as e:
+            logger.error(f"Could not get Redis config due to infrastructure error: {e}")
+        except Exception as e:
+            logger.error(f"Could not get Redis config due to unexpected error: {e}")
 
-        # Fallback to environment variables with deployment-safe defaults
-        redis_host = os.getenv("REDIS_HOST")
-        redis_port = os.getenv("REDIS_PORT")
-        redis_db = os.getenv("REDIS_DB", "0")
-        
         # Fail gracefully if critical config is missing
-        if not redis_host or not redis_port:
-            logger.error(
-                "Redis configuration missing: REDIS_HOST and REDIS_PORT must be set via "
-                "config service or environment variables. Algo engine coordination will be disabled."
-            )
-            return None
-        
-        try:
-            return {
-                "host": redis_host,
-                "port": int(redis_port),
-                "db": int(redis_db),
-                "decode_responses": True
-            }
-        except ValueError as e:
-            logger.error(f"Invalid Redis configuration: {e}. Algo engine coordination will be disabled.")
-            return None
+        logger.warning(
+            "Redis configuration missing: Could not parse REDIS_URL from config service. "
+            "Algo engine coordination will be disabled, using database fallback."
+        )
+        return None
 
     async def get_handoff_state(
         self,
@@ -373,10 +358,10 @@ class HandoffStateMachine:
 
             return result
 
-        except Exception as e:
-            logger.error(f"[{transition_id}] Transition failed: {e}", exc_info=True)
+        except (ConnectionError, TimeoutError, OSError) as e:
+            logger.error(f"[{transition_id}] Transition failed due to network/database error: {e}", exc_info=True)
             
-            # Attempt rollback
+            # Attempt rollback for infrastructure failures
             try:
                 await self._rollback_transition(transition_id, current_state, request)
             except Exception as rollback_error:
@@ -384,10 +369,39 @@ class HandoffStateMachine:
 
             await self._record_transition_audit(
                 transition_id, "transition_failed", request.requested_by,
-                {"error": str(e)}
+                {"error": f"Infrastructure error: {e}"}
             )
+            
+            from ..exceptions import DatabaseError
+            raise DatabaseError(f"Handoff transition failed due to infrastructure error: {e}")
+            
+        except ValueError as e:
+            logger.error(f"[{transition_id}] Transition failed due to invalid parameters: {e}")
+            
+            await self._record_transition_audit(
+                transition_id, "transition_failed", request.requested_by,
+                {"error": f"Validation error: {e}"}
+            )
+            
+            from ..exceptions import ValidationError
+            raise ValidationError(f"Invalid handoff transition parameters: {e}")
+            
+        except Exception as e:
+            logger.critical(f"[{transition_id}] CRITICAL: Unexpected handoff transition failure: {e}", exc_info=True)
+            
+            # Attempt rollback for unexpected errors
+            try:
+                await self._rollback_transition(transition_id, current_state, request)
+            except Exception as rollback_error:
+                logger.critical(f"[{transition_id}] CRITICAL: Rollback also failed during unexpected error: {rollback_error}")
 
-            raise
+            await self._record_transition_audit(
+                transition_id, "transition_failed", request.requested_by,
+                {"error": f"Unexpected error: {e}"}
+            )
+            
+            from ..exceptions import OrderServiceError
+            raise OrderServiceError(f"Critical handoff transition failure: {e}")
 
     async def _validate_transition(
         self,
@@ -544,8 +558,37 @@ class HandoffStateMachine:
                 audit_trail=[]
             )
 
+        except (ConnectionError, TimeoutError, OSError) as e:
+            logger.error(f"Manual to script transition failed due to database/network error: {e}")
+            errors.append(f"Manual to script transition failed due to infrastructure error: {str(e)}")
+            return TransitionResult(
+                transition_id=transition_id,
+                success=False,
+                new_state=current_state,
+                positions_transferred=positions_transferred,
+                orders_cancelled=orders_cancelled,
+                warnings=warnings,
+                errors=errors,
+                audit_trail=[]
+            )
+            
+        except ValueError as e:
+            logger.error(f"Manual to script transition failed due to validation error: {e}")
+            errors.append(f"Manual to script transition failed due to invalid parameters: {str(e)}")
+            return TransitionResult(
+                transition_id=transition_id,
+                success=False,
+                new_state=current_state,
+                positions_transferred=positions_transferred,
+                orders_cancelled=orders_cancelled,
+                warnings=warnings,
+                errors=errors,
+                audit_trail=[]
+            )
+            
         except Exception as e:
-            errors.append(f"Manual to script transition failed: {str(e)}")
+            logger.critical(f"CRITICAL: Unexpected manual to script transition failure: {e}", exc_info=True)
+            errors.append(f"Manual to script transition failed due to unexpected error: {str(e)}")
             return TransitionResult(
                 transition_id=transition_id,
                 success=False,
@@ -617,8 +660,23 @@ class HandoffStateMachine:
                 audit_trail=[]
             )
 
+        except (ConnectionError, TimeoutError, OSError) as e:
+            logger.error(f"Script to manual transition failed due to database/network error: {e}")
+            errors.append(f"Script to manual transition failed due to infrastructure error: {str(e)}")
+            return TransitionResult(
+                transition_id=transition_id,
+                success=False,
+                new_state=current_state,
+                positions_transferred=positions_transferred,
+                orders_cancelled=orders_cancelled,
+                warnings=warnings,
+                errors=errors,
+                audit_trail=[]
+            )
+            
         except Exception as e:
-            errors.append(f"Script to manual transition failed: {str(e)}")
+            logger.critical(f"CRITICAL: Unexpected script to manual transition failure: {e}", exc_info=True)
+            errors.append(f"Script to manual transition failed due to unexpected error: {str(e)}")
             return TransitionResult(
                 transition_id=transition_id,
                 success=False,
@@ -692,8 +750,23 @@ class HandoffStateMachine:
                 audit_trail=[]
             )
 
+        except (ConnectionError, TimeoutError, OSError) as e:
+            logger.error(f"Emergency stop failed due to database/network error: {e}")
+            errors.append(f"Emergency stop failed due to infrastructure error: {str(e)}")
+            return TransitionResult(
+                transition_id=transition_id,
+                success=False,
+                new_state=current_state,
+                positions_transferred=0,
+                orders_cancelled=0,
+                warnings=warnings,
+                errors=errors,
+                audit_trail=[]
+            )
+            
         except Exception as e:
-            errors.append(f"Emergency stop failed: {str(e)}")
+            logger.critical(f"CRITICAL: Emergency stop failed with unexpected error: {e}", exc_info=True)
+            errors.append(f"Emergency stop failed due to unexpected error: {str(e)}")
             return TransitionResult(
                 transition_id=transition_id,
                 success=False,
@@ -1107,11 +1180,25 @@ class HandoffStateMachine:
                 logger.error(f"Algo engine failed to initialize for execution {execution_id}: {acknowledgment}")
                 raise Exception(f"Algo engine initialization failed: {acknowledgment.get('error', 'Unknown error')}")
                 
-        except Exception as e:
-            logger.error(f"Failed to initialize script state for execution {execution_id}: {e}")
+        except (ConnectionError, TimeoutError, OSError) as e:
+            logger.error(f"Failed to initialize script state due to infrastructure error for execution {execution_id}: {e}")
             # Rollback positions to manual control on failure
             await self._rollback_positions_to_manual(positions)
-            raise
+            from ..exceptions import ServiceUnavailableError
+            raise ServiceUnavailableError(f"Script initialization failed due to infrastructure error: {e}")
+            
+        except ValueError as e:
+            logger.error(f"Failed to initialize script state due to invalid parameters for execution {execution_id}: {e}")
+            await self._rollback_positions_to_manual(positions)
+            from ..exceptions import ValidationError
+            raise ValidationError(f"Script initialization failed due to invalid parameters: {e}")
+            
+        except Exception as e:
+            logger.critical(f"CRITICAL: Script state initialization failed unexpectedly for execution {execution_id}: {e}", exc_info=True)
+            # Rollback positions to manual control on failure
+            await self._rollback_positions_to_manual(positions)
+            from ..exceptions import OrderServiceError
+            raise OrderServiceError(f"Critical script initialization failure: {e}")
 
     async def _stop_script_execution(self, execution_id: Optional[str]) -> None:
         """Stop script execution gracefully."""
@@ -1151,8 +1238,13 @@ class HandoffStateMachine:
                 # Fallback to force stop if graceful fails
                 await self._emergency_stop_script(execution_id)
                 
+        except (ConnectionError, TimeoutError, OSError) as e:
+            logger.error(f"Failed to gracefully stop execution {execution_id} due to infrastructure error: {e}")
+            # Attempt emergency stop as fallback
+            await self._emergency_stop_script(execution_id)
+            
         except Exception as e:
-            logger.error(f"Failed to gracefully stop execution {execution_id}: {e}")
+            logger.critical(f"CRITICAL: Graceful stop failed unexpectedly for execution {execution_id}: {e}", exc_info=True)
             # Attempt emergency stop as fallback
             await self._emergency_stop_script(execution_id)
 
@@ -1195,22 +1287,49 @@ class HandoffStateMachine:
             
             logger.warning(f"Emergency stop completed for execution {execution_id}")
             
+        except (ConnectionError, TimeoutError, OSError) as e:
+            logger.critical(f"Emergency stop failed for execution {execution_id} due to infrastructure error: {e}")
+            # Even if emergency stop fails, try to cancel orders at database level
+            try:
+                await self.db.execute(
+                    text("""
+                        UPDATE order_service.orders
+                        SET status = 'CANCELLED',
+                            updated_at = NOW(),
+                            cancelled_reason = 'Emergency stop - script execution halted (infrastructure failure)'
+                        WHERE execution_id = :execution_id::uuid
+                          AND status IN ('PENDING', 'SUBMITTED', 'OPEN', 'TRIGGER_PENDING')
+                    """),
+                    {"execution_id": execution_id}
+                )
+                await self.db.commit()
+            except Exception as db_error:
+                logger.critical(f"CRITICAL: Failed to cancel orders at database level for execution {execution_id}: {db_error}")
+            
+            from ..exceptions import ServiceUnavailableError
+            raise ServiceUnavailableError(f"Emergency stop failed due to infrastructure error: {e}")
+            
         except Exception as e:
-            logger.critical(f"Emergency stop failed for execution {execution_id}: {e}")
+            logger.critical(f"CRITICAL: Emergency stop failed unexpectedly for execution {execution_id}: {e}", exc_info=True)
             # Even if emergency stop fails, cancel orders at database level
-            await self.db.execute(
-                text("""
-                    UPDATE order_service.orders
-                    SET status = 'CANCELLED',
-                        updated_at = NOW(),
-                        cancelled_reason = 'Emergency stop - script execution halted'
-                    WHERE execution_id = :execution_id::uuid
-                      AND status IN ('PENDING', 'SUBMITTED', 'OPEN', 'TRIGGER_PENDING')
-                """),
-                {"execution_id": execution_id}
-            )
-            await self.db.commit()
-            raise
+            try:
+                await self.db.execute(
+                    text("""
+                        UPDATE order_service.orders
+                        SET status = 'CANCELLED',
+                            updated_at = NOW(),
+                            cancelled_reason = 'Emergency stop - script execution halted (unexpected error)'
+                        WHERE execution_id = :execution_id::uuid
+                          AND status IN ('PENDING', 'SUBMITTED', 'OPEN', 'TRIGGER_PENDING')
+                    """),
+                    {"execution_id": execution_id}
+                )
+                await self.db.commit()
+            except Exception as db_error:
+                logger.critical(f"CRITICAL: Failed to cancel orders at database level for execution {execution_id}: {db_error}")
+            
+            from ..exceptions import OrderServiceError
+            raise OrderServiceError(f"Critical emergency stop failure: {e}")
 
     # Algo Engine Integration Methods
 
@@ -1297,9 +1416,13 @@ class HandoffStateMachine:
                 
                 logger.info(f"Signaled algo engine start for execution {execution_id}")
                 
-            except Exception as redis_error:
+            except (ConnectionError, TimeoutError, OSError) as redis_error:
                 # GAP-REC-12: Fallback to database-coordinated handoff when Redis is unavailable
-                logger.warning(f"Redis unavailable ({redis_error}), using fallback coordination for execution {execution_id}")
+                logger.warning(f"Redis connection failed ({redis_error}), using fallback coordination for execution {execution_id}")
+                
+            except Exception as redis_error:
+                # GAP-REC-12: Fallback to database-coordinated handoff when Redis is unavailable  
+                logger.warning(f"Redis unavailable due to unexpected error ({redis_error}), using fallback coordination for execution {execution_id}")
                 
                 from .redis_unavailable_handoff_manager import HandoffCoordinationRequest
                 coordination_request = HandoffCoordinationRequest(
@@ -1322,9 +1445,15 @@ class HandoffStateMachine:
                 else:
                     raise Exception(f"Handoff coordination failed: {result.error_message}")
                 
+        except (ConnectionError, TimeoutError, OSError) as e:
+            logger.error(f"Failed to signal algo engine start due to infrastructure error: {e}")
+            from ..exceptions import ServiceUnavailableError
+            raise ServiceUnavailableError(f"Unable to signal algo engine start: {e}")
+            
         except Exception as e:
-            logger.error(f"Failed to signal algo engine start: {e}")
-            raise
+            logger.critical(f"CRITICAL: Failed to signal algo engine start due to unexpected error: {e}", exc_info=True)
+            from ..exceptions import OrderServiceError
+            raise OrderServiceError(f"Critical algo engine signaling failure: {e}")
 
     async def _wait_for_algo_engine_ack(
         self,
@@ -1408,8 +1537,12 @@ class HandoffStateMachine:
             
             logger.info(f"Set up position monitoring for execution {execution_id}")
             
+        except (ConnectionError, TimeoutError, OSError) as e:
+            logger.error(f"Failed to setup position monitoring due to infrastructure error: {e}")
+            # Don't raise - monitoring setup failure shouldn't stop handoff
+            
         except Exception as e:
-            logger.error(f"Failed to setup position monitoring: {e}")
+            logger.error(f"Failed to setup position monitoring due to unexpected error: {e}")
             # Don't raise - monitoring setup failure shouldn't stop handoff
 
     async def _signal_algo_engine_stop(
@@ -1443,9 +1576,15 @@ class HandoffStateMachine:
             
             logger.info(f"Sent graceful stop signal for execution {execution_id}")
             
+        except (ConnectionError, TimeoutError, OSError) as e:
+            logger.error(f"Failed to signal algo engine stop due to infrastructure error: {e}")
+            from ..exceptions import ServiceUnavailableError
+            raise ServiceUnavailableError(f"Unable to signal algo engine stop: {e}")
+            
         except Exception as e:
-            logger.error(f"Failed to signal algo engine stop: {e}")
-            raise
+            logger.critical(f"CRITICAL: Failed to signal algo engine stop due to unexpected error: {e}", exc_info=True)
+            from ..exceptions import OrderServiceError
+            raise OrderServiceError(f"Critical algo engine stop signaling failure: {e}")
 
     async def _wait_for_shutdown_confirmation(
         self,
@@ -1515,8 +1654,12 @@ class HandoffStateMachine:
             
             logger.warning(f"Sent emergency stop signal for execution {execution_id}")
             
+        except (ConnectionError, TimeoutError, OSError) as e:
+            logger.critical(f"Failed to signal emergency stop due to infrastructure error: {e}")
+            # Don't raise - emergency stop must continue even if signaling fails
+            
         except Exception as e:
-            logger.critical(f"Failed to signal emergency stop: {e}")
+            logger.critical(f"CRITICAL: Failed to signal emergency stop due to unexpected error: {e}", exc_info=True)
             # Don't raise - emergency stop must continue even if signaling fails
 
     async def _cancel_execution_orders(
@@ -1615,8 +1758,12 @@ class HandoffStateMachine:
             
             logger.warning(f"Sent emergency alert for execution {execution_id}")
             
+        except (ConnectionError, TimeoutError, OSError) as e:
+            logger.error(f"Failed to send emergency alert due to infrastructure error: {e}")
+            # Don't raise - alert failure shouldn't stop emergency procedures
+            
         except Exception as e:
-            logger.error(f"Failed to send emergency alert: {e}")
+            logger.error(f"Failed to send emergency alert due to unexpected error: {e}")
             # Don't raise - alert failure shouldn't stop emergency procedures
 
     async def _rollback_positions_to_manual(
