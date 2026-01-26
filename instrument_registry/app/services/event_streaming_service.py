@@ -121,31 +121,31 @@ class EventStreamingService:
         
         try:
             # Load event streaming configuration
-            self.broker_url = await self.config_client.get_config(
+            self.broker_url = self.config_client.get(
                 'INSTRUMENT_REGISTRY_EVENT_BROKER_URL', 
                 default='redis://localhost:6379/0'
             )
             
-            self.retry_attempts = int(await self.config_client.get_config(
+            self.retry_attempts = self.config_client.get_int(
                 'INSTRUMENT_REGISTRY_EVENT_RETRY_ATTEMPTS',
-                default='3'
-            ))
+                default=3
+            )
             
-            self.batch_size = int(await self.config_client.get_config(
+            self.batch_size = self.config_client.get_int(
                 'INSTRUMENT_REGISTRY_EVENT_BATCH_SIZE',
-                default='100'
-            ))
+                default=100
+            )
             
-            ordering_str = await self.config_client.get_config(
+            ordering_str = self.config_client.get(
                 'INSTRUMENT_REGISTRY_EVENT_ORDERING_GUARANTEE',
                 default='partition'
             )
             self.ordering_guarantee = OrderingGuarantee(ordering_str)
             
-            self.dlq_retention_hours = int(await self.config_client.get_config(
+            self.dlq_retention_hours = self.config_client.get_int(
                 'INSTRUMENT_REGISTRY_DLQ_RETENTION_HOURS',
-                default='72'
-            ))
+                default=72
+            )
             
             logger.info(f"Loaded event streaming config: broker={self.broker_url[:20]}..., "
                        f"retries={self.retry_attempts}, batch_size={self.batch_size}, "
