@@ -1,0 +1,22 @@
+{
+  "test_name": "Sustained Load Test",
+  "start_time": "2026-01-26T11:42:43.423929",
+  "end_time": "2026-01-26T11:42:43.423949",
+  "total_requests": 1277,
+  "successful_requests": 1277,
+  "failed_requests": 0,
+  "total_duration_seconds": 60.046154499053955,
+  "avg_latency_ms": 6.248415683337087,
+  "p50_latency_ms": 6.351232528686523,
+  "p95_latency_ms": 8.212685585021973,
+  "p99_latency_ms": 9.899568557739258,
+  "max_latency_ms": 51.97334289550781,
+  "min_latency_ms": 2.6192665100097656,
+  "requests_per_second": 21.266973891227615,
+  "avg_response_size": 9441,
+  "error_rate": 0.0,
+  "error_details": {},
+  "concurrent_users": 1,
+  "test_duration_seconds": 60.046154499053955,
+  "target_endpoint": "http://localhost:8087"
+}
