@@ -23,6 +23,8 @@ from common.rate_limiting import ConfigurableRateLimiter
 from app.api.instruments import router as instruments_router
 from app.api.actuator import router as actuator_router
 from app.api.subscription_profiles import router as subscription_profiles_router
+from app.api.search_catalog_real import router as search_router, init_search_config
+from app.database.connection import init_database
 
 # Import dual-write services
 from app.services.dual_write_adapter import DualWriteAdapter
@@ -135,9 +137,13 @@ async def lifespan(app: FastAPI):
         if missing_configs:
             raise ValueError(f"Missing required configurations: {missing_configs}")
         
-        # Initialize database
-        # Note: Database initialization would be handled by SQLAlchemy async engine
-        logger.info("Database connection initialized")
+        # Initialize database connection manager
+        await init_database(config_client)
+        logger.info("Database connection manager initialized")
+        
+        # Initialize search configuration
+        init_search_config(config_client)
+        logger.info("Search API configuration initialized")
         
         # Initialize health check manager
         global health_manager, dual_write_adapter, validation_service, retention_service, monitoring_service, background_tasks
@@ -417,6 +423,9 @@ app.include_router(instruments_router)
 
 # Include subscription profiles API routes
 app.include_router(subscription_profiles_router)
+
+# Include search and catalog API routes
+app.include_router(search_router)
 
 # Include actuator endpoints for service management
 app.include_router(actuator_router)
