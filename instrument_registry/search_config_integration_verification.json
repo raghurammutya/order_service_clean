@@ -1,0 +1,63 @@
+{
+  "verification_summary": {
+    "test_timestamp": "2026-01-26T11:35:02.785225",
+    "config_service_url": "http://localhost:8100",
+    "search_api_url": "http://localhost:8087",
+    "total_params_tested": 5
+  },
+  "config_parameters": [
+    {
+      "parameter": "INSTRUMENT_REGISTRY_SEARCH_TIMEOUT",
+      "status": "NOT_FOUND",
+      "error": "HTTP 404",
+      "source": "config_service"
+    },
+    {
+      "parameter": "INSTRUMENT_REGISTRY_MAX_RESULTS_PER_PAGE",
+      "status": "NOT_FOUND",
+      "error": "HTTP 404",
+      "source": "config_service"
+    },
+    {
+      "parameter": "INSTRUMENT_REGISTRY_SEARCH_INDEX_REFRESH",
+      "status": "NOT_FOUND",
+      "error": "HTTP 404",
+      "source": "config_service"
+    },
+    {
+      "parameter": "INSTRUMENT_REGISTRY_CACHE_TTL_SECONDS",
+      "status": "FOUND",
+      "value": "300",
+      "source": "config_service"
+    },
+    {
+      "parameter": "INSTRUMENT_REGISTRY_QUERY_OPTIMIZATION",
+      "status": "NOT_FOUND",
+      "error": "HTTP 404",
+      "source": "config_service"
+    }
+  ],
+  "functional_tests": [
+    {
+      "test": "search_api_timeout",
+      "status": "SUCCESS",
+      "response_time_ms": 7.170677185058594,
+      "timeout_evidence": true
+    },
+    {
+      "test": "pagination_limits",
+      "status": "SUCCESS",
+      "requested_size": 150,
+      "actual_size": 1,
+      "config_respected": true
+    }
+  ],
+  "overall_assessment": {
+    "config_integration_score": "1/5 (20.0%)",
+    "functional_tests_score": "2/2 (100.0%)",
+    "production_ready": false,
+    "recommendations": [
+      "Register missing config parameters (4 missing)"
+    ]
+  }
+}

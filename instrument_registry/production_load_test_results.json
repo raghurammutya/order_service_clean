@@ -1,0 +1,126 @@
+{
+  "test_suite_summary": {
+    "test_date": "2026-01-26T11:32:44Z",
+    "test_environment": "Production Load Testing",
+    "target_endpoint": "http://localhost:8087",
+    "api_endpoints_tested": [
+      "/api/v1/internal/instrument-registry/search",
+      "/api/v1/internal/instrument-registry/catalog/summary"
+    ],
+    "test_types": ["burst_concurrency", "sustained_load"],
+    "overall_status": "MIXED_RESULTS"
+  },
+  "performance_requirements": {
+    "p95_latency_target_ms": 100,
+    "error_rate_threshold_percent": 1.0,
+    "minimum_throughput_rps": 50
+  },
+  "burst_test_results": {
+    "test_name": "Burst Concurrency Test",
+    "test_parameters": {
+      "concurrent_users": 50,
+      "iterations": 3,
+      "total_requests": 150
+    },
+    "performance_metrics": {
+      "avg_latency_ms": 161.82,
+      "p50_latency_ms": 117.91,
+      "p95_latency_ms": 292.16,
+      "p99_latency_ms": 294.17,
+      "max_latency_ms": 294.59,
+      "min_latency_ms": 45.21,
+      "requests_per_second": 182.04,
+      "avg_response_size_bytes": 10117
+    },
+    "reliability_metrics": {
+      "total_requests": 150,
+      "successful_requests": 150,
+      "failed_requests": 0,
+      "error_rate_percent": 0.0,
+      "success_rate_percent": 100.0
+    },
+    "assessment": {
+      "p95_latency": "FAIL - 292.16ms exceeds 100ms target",
+      "error_rate": "PASS - 0.00% below 1% threshold",
+      "throughput": "PASS - 182.04 RPS exceeds 50 RPS target",
+      "overall": "MIXED - High latency under burst load needs optimization"
+    }
+  },
+  "sustained_test_results": {
+    "test_name": "Sustained Load Test",
+    "test_parameters": {
+      "duration_seconds": 60,
+      "target_rps": 25,
+      "total_requests": 1295
+    },
+    "performance_metrics": {
+      "avg_latency_ms": 5.87,
+      "p50_latency_ms": 5.98,
+      "p95_latency_ms": 7.41,
+      "p99_latency_ms": 8.42,
+      "max_latency_ms": 52.57,
+      "min_latency_ms": 2.04,
+      "actual_rps": 21.58,
+      "avg_response_size_bytes": 9433
+    },
+    "reliability_metrics": {
+      "total_requests": 1295,
+      "successful_requests": 1295,
+      "failed_requests": 0,
+      "error_rate_percent": 0.0,
+      "success_rate_percent": 100.0
+    },
+    "assessment": {
+      "p95_latency": "PASS - 7.41ms well below 100ms target",
+      "error_rate": "PASS - 0.00% below 1% threshold", 
+      "throughput": "FAIL - 21.58 RPS below 50 RPS target",
+      "overall": "MIXED - Excellent latency but rate-limited throughput"
+    }
+  },
+  "performance_analysis": {
+    "strengths": [
+      "Zero error rate demonstrates excellent stability",
+      "Sustained load shows sub-10ms P95 latency",
+      "Burst throughput demonstrates capacity (182 RPS peak)",
+      "Response sizes consistent around 9-10KB"
+    ],
+    "optimization_opportunities": [
+      "Burst concurrency causes latency degradation (292ms P95)",
+      "Rate limiting prevents reaching target throughput",
+      "Connection pooling may need tuning for high concurrency",
+      "Database query optimization needed for concurrent loads"
+    ],
+    "production_readiness": {
+      "stability": "EXCELLENT - 100% success rate",
+      "latency_light_load": "EXCELLENT - <10ms P95",
+      "latency_heavy_load": "NEEDS_IMPROVEMENT - >290ms P95", 
+      "throughput": "MODERATE - Peak capable but rate-limited"
+    }
+  },
+  "recommendations": {
+    "immediate_actions": [
+      "Increase database connection pool size for concurrency",
+      "Add query result caching for frequently accessed data",
+      "Implement async connection pooling",
+      "Review rate limiting configuration"
+    ],
+    "monitoring_requirements": [
+      "Deploy with P95 latency alerting at 50ms threshold",
+      "Monitor error rate with alerts at 0.5% threshold",
+      "Track throughput with baseline at 25 RPS sustained",
+      "Database connection pool utilization monitoring"
+    ],
+    "deployment_strategy": [
+      "Deploy to staging with increased load testing",
+      "Implement gradual rollout with canary deployment",
+      "Monitor production metrics for 48 hours post-deployment",
+      "Prepare rollback plan if P95 latency exceeds 100ms"
+    ]
+  },
+  "test_artifacts": {
+    "burst_test_file": "load_test_burst_1769427165.json",
+    "sustained_test_file": "load_test_sustained_1769427225.json",
+    "test_script": "scripts/production_load_test.py",
+    "generated_at": "2026-01-26T11:33:45Z"
+  }
+}
