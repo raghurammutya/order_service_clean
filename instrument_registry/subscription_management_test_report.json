@@ -1,0 +1,138 @@
+{
+  "test_summary": {
+    "total_tests": 7,
+    "passed_tests": 7,
+    "failed_tests": 0,
+    "success_rate": 100.0
+  },
+  "test_results": [
+    {
+      "test_name": "Config Parameter Access",
+      "passed": true,
+      "details": {
+        "config_values": {
+          "INSTRUMENT_REGISTRY_SUBSCRIPTION_TIMEOUT": "30",
+          "INSTRUMENT_REGISTRY_MAX_SUBSCRIPTIONS_PER_USER": "100",
+          "INSTRUMENT_REGISTRY_PROFILE_VALIDATION_STRICT": "true",
+          "INSTRUMENT_REGISTRY_AUDIT_RETENTION_DAYS": "365",
+          "INSTRUMENT_REGISTRY_CONFLICT_RESOLUTION_STRATEGY": "latest_wins"
+        }
+      },
+      "timestamp": "2026-01-26T03:59:19.053847+00:00"
+    },
+    {
+      "test_name": "Subscription Creation with Limits",
+      "passed": true,
+      "details": {
+        "profile_id": "profile_28e17d4dcfdc4fc2954bef2fecbf5ca6",
+        "creation_result": {
+          "profile_id": "profile_28e17d4dcfdc4fc2954bef2fecbf5ca6",
+          "user_id": "test_user_limits",
+          "status": "created",
+          "conflicts_resolved": 0,
+          "resolution_strategy": "latest_wins",
+          "duration_ms": 122
+        },
+        "profile_retrieved": true
+      },
+      "timestamp": "2026-01-26T03:59:19.179943+00:00"
+    },
+    {
+      "test_name": "Conflict Resolution - Latest Wins",
+      "passed": true,
+      "details": {
+        "profiles_created": 3,
+        "results": [
+          {
+            "profile_id": "profile_cd0f1fd0ac3a446db1f64db26fa7de08",
+            "user_id": "test_user_conflicts",
+            "status": "created",
+            "conflicts_resolved": 1,
+            "resolution_strategy": "latest_wins",
+            "duration_ms": 50
+          },
+          {
+            "profile_id": "profile_86cecb740bc44d94b894f90def840f67",
+            "user_id": "test_user_conflicts",
+            "status": "created",
+            "conflicts_resolved": 0,
+            "resolution_strategy": "latest_wins",
+            "duration_ms": 33
+          },
+          {
+            "profile_id": "profile_80b0dee969d04e18b8b7bd0dde226e05",
+            "user_id": "test_user_conflicts",
+            "status": "created",
+            "conflicts_resolved": 0,
+            "resolution_strategy": "latest_wins",
+            "duration_ms": 41
+          }
+        ]
+      },
+      "timestamp": "2026-01-26T03:59:19.310654+00:00"
+    },
+    {
+      "test_name": "Audit Logging Capture",
+      "passed": true,
+      "details": {
+        "audit_logs": {
+          "count": 1,
+          "actions": [
+            "create"
+          ],
+          "metadata_captured": true,
+          "ip_captured": false
+        },
+        "profile_id": "profile_d8ba4009387542afa064addb0eaeb8d0"
+      },
+      "timestamp": "2026-01-26T03:59:19.392497+00:00"
+    },
+    {
+      "test_name": "User Profile Listing",
+      "passed": true,
+      "details": {
+        "total_profiles": 3,
+        "filtered_profiles": 1,
+        "created_count": 3
+      },
+      "timestamp": "2026-01-26T03:59:19.491787+00:00"
+    },
+    {
+      "test_name": "Audit Log Cleanup",
+      "passed": true,
+      "details": {
+        "cleanup_result": {
+          "deleted_count": 0,
+          "retention_days": 365,
+          "cutoff_date": "2025-01-26T03:59:19.546482+00:00",
+          "duration_ms": 30
+        },
+        "retention_policy": "365 days"
+      },
+      "timestamp": "2026-01-26T03:59:19.549137+00:00"
+    },
+    {
+      "test_name": "Config-Driven Validation Adaptation",
+      "passed": true,
+      "details": {
+        "config_keys_present": true,
+        "type_validation": true,
+        "config_values": {
+          "INSTRUMENT_REGISTRY_SUBSCRIPTION_TIMEOUT": 30,
+          "INSTRUMENT_REGISTRY_MAX_SUBSCRIPTIONS_PER_USER": 100,
+          "INSTRUMENT_REGISTRY_PROFILE_VALIDATION_STRICT": true,
+          "INSTRUMENT_REGISTRY_AUDIT_RETENTION_DAYS": 365,
+          "INSTRUMENT_REGISTRY_CONFLICT_RESOLUTION_STRATEGY": "latest_wins"
+        }
+      },
+      "timestamp": "2026-01-26T03:59:19.573699+00:00"
+    }
+  ],
+  "production_readiness": {
+    "config_integration": true,
+    "audit_logging": true,
+    "conflict_resolution": true,
+    "lifecycle_management": true
+  },
+  "generated_at": "2026-01-26T03:59:19.573788+00:00"
+}

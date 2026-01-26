@@ -22,6 +22,7 @@ from common.health_checks import HealthCheckManager
 from common.rate_limiting import ConfigurableRateLimiter
 from app.api.instruments import router as instruments_router
 from app.api.actuator import router as actuator_router
+from app.api.subscription_profiles import router as subscription_profiles_router
 
 # Import dual-write services
 from app.services.dual_write_adapter import DualWriteAdapter
@@ -413,6 +414,9 @@ async def metrics_middleware(request: Request, call_next):
 
 # Include instrument registry API routes
 app.include_router(instruments_router)
+
+# Include subscription profiles API routes
+app.include_router(subscription_profiles_router)
 
 # Include actuator endpoints for service management
 app.include_router(actuator_router)
