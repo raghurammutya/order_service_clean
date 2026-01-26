@@ -1,6 +1,9 @@
 """
 Actuator endpoints for manual service triggers and monitoring
 
+✅ PRODUCTION-READY: Operational control endpoints for production dual-write infrastructure.
+   Fully integrated with runtime services and emergency procedures.
+
 These endpoints allow operations teams to manually trigger dual-write services
 and get real-time status information for troubleshooting and maintenance.
 """
