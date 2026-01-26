@@ -1,0 +1,43 @@
+{
+  "timestamp": "2026-01-26T14:10:25.113451",
+  "total_parameters": 5,
+  "accessible_count": 5,
+  "success_rate": 100.0,
+  "parameters": {
+    "INSTRUMENT_REGISTRY_EVENT_BROKER_URL": {
+      "key": "INSTRUMENT_REGISTRY_EVENT_BROKER_URL",
+      "value": null,
+      "status": "SUCCESS",
+      "accessible": true
+    },
+    "INSTRUMENT_REGISTRY_EVENT_RETRY_ATTEMPTS": {
+      "key": "INSTRUMENT_REGISTRY_EVENT_RETRY_ATTEMPTS",
+      "value": null,
+      "status": "SUCCESS",
+      "accessible": true
+    },
+    "INSTRUMENT_REGISTRY_EVENT_BATCH_SIZE": {
+      "key": "INSTRUMENT_REGISTRY_EVENT_BATCH_SIZE",
+      "value": null,
+      "status": "SUCCESS",
+      "accessible": true
+    },
+    "INSTRUMENT_REGISTRY_EVENT_ORDERING_GUARANTEE": {
+      "key": "INSTRUMENT_REGISTRY_EVENT_ORDERING_GUARANTEE",
+      "value": null,
+      "status": "SUCCESS",
+      "accessible": true
+    },
+    "INSTRUMENT_REGISTRY_DLQ_RETENTION_HOURS": {
+      "key": "INSTRUMENT_REGISTRY_DLQ_RETENTION_HOURS",
+      "value": null,
+      "status": "SUCCESS",
+      "accessible": true
+    }
+  },
+  "ready_for_implementation": true,
+  "broker_connectivity": {
+    "status": "FAILED",
+    "error": "Broker connectivity test failed: Redis URL must specify one of the following schemes (redis://, rediss://, unix://)"
+  }
+}

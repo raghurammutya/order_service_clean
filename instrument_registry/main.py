@@ -23,7 +23,9 @@ from common.rate_limiting import ConfigurableRateLimiter
 from app.api.instruments import router as instruments_router
 from app.api.actuator import router as actuator_router
 from app.api.subscription_profiles import router as subscription_profiles_router
+from app.api.subscription_planner import router as subscription_planner_router
 from app.api.search_catalog_real import router as search_router, init_search_config
+from app.api.event_streaming import router as event_streaming_router
 from app.database.connection import init_database
 
 # Import dual-write services
@@ -31,6 +33,7 @@ from app.services.dual_write_adapter import DualWriteAdapter
 from app.services.data_validation_service import DataValidationService
 from app.services.data_retention_service import DataRetentionService
 from app.services.monitoring_service import MonitoringService
+from app.services.event_streaming_service import EventStreamingService
 
 # =========================================
 # CONFIGURATION & LOGGING
@@ -48,6 +51,7 @@ dual_write_adapter = None
 validation_service = None
 retention_service = None
 monitoring_service = None
+event_streaming_service = None
 
 # Background task handles
 background_tasks = []
@@ -102,6 +106,16 @@ cache_operations_total = Counter(
     ['operation', 'status']
 )
 
+# Import subscription planner metrics from metrics module
+from app.metrics import (
+    subscription_plans_created_total,
+    subscription_plan_descriptions_generated_total, 
+    subscription_plan_cache_operations_total,
+    subscription_plan_conflicts_total,
+    subscription_plan_optimization_duration_seconds,
+    subscription_plans_active
+)
+
 # =========================================
 # LIFESPAN MANAGEMENT
 # =========================================
@@ -146,7 +160,7 @@ async def lifespan(app: FastAPI):
         logger.info("Search API configuration initialized")
         
         # Initialize health check manager
-        global health_manager, dual_write_adapter, validation_service, retention_service, monitoring_service, background_tasks
+        global health_manager, dual_write_adapter, validation_service, retention_service, monitoring_service, event_streaming_service, background_tasks
         database_url = config_client.get("DATABASE_URL")
         redis_url = config_client.get("REDIS_URL")
         
@@ -206,6 +220,14 @@ async def lifespan(app: FastAPI):
         )
         await monitoring_service.initialize()
         logger.info("Monitoring service initialized")
+        
+        # Event streaming service
+        event_streaming_service = EventStreamingService(
+            config_client=config_client,
+            monitoring_service=monitoring_service
+        )
+        await event_streaming_service.initialize()
+        logger.info("Event streaming service initialized")
         
         # Start background tasks
         logger.info("Starting background tasks...")
@@ -310,8 +332,10 @@ async def lifespan(app: FastAPI):
             await retention_service.close()
         if monitoring_service:
             await monitoring_service.close()
+        if event_streaming_service:
+            await event_streaming_service.shutdown()
         
-        logger.info("Dual-write services closed")
+        logger.info("All services closed")
         
         # Close config client
         await config_client.close()
@@ -424,8 +448,14 @@ app.include_router(instruments_router)
 # Include subscription profiles API routes
 app.include_router(subscription_profiles_router)
 
+# Include subscription planner API routes
+app.include_router(subscription_planner_router)
+
 # Include search and catalog API routes
 app.include_router(search_router)
+
+# Include event streaming API routes
+app.include_router(event_streaming_router)
 
 # Include actuator endpoints for service management
 app.include_router(actuator_router)

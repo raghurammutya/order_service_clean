@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-01-26T14:09:29.765873",
+  "total_parameters": 5,
+  "accessible_count": 0,
+  "success_rate": 0.0,
+  "parameters": {
+    "INSTRUMENT_REGISTRY_EVENT_BROKER_URL": {
+      "key": "INSTRUMENT_REGISTRY_EVENT_BROKER_URL",
+      "status": "FAILED",
+      "error": "HTTP 404: {\"detail\":\"Secret not found: INSTRUMENT_REGISTRY_EVENT_BROKER_URL in prod\"}",
+      "accessible": false
+    },
+    "INSTRUMENT_REGISTRY_EVENT_RETRY_ATTEMPTS": {
+      "key": "INSTRUMENT_REGISTRY_EVENT_RETRY_ATTEMPTS",
+      "status": "FAILED",
+      "error": "HTTP 404: {\"detail\":\"Secret not found: INSTRUMENT_REGISTRY_EVENT_RETRY_ATTEMPTS in prod\"}",
+      "accessible": false
+    },
+    "INSTRUMENT_REGISTRY_EVENT_BATCH_SIZE": {
+      "key": "INSTRUMENT_REGISTRY_EVENT_BATCH_SIZE",
+      "status": "FAILED",
+      "error": "HTTP 404: {\"detail\":\"Secret not found: INSTRUMENT_REGISTRY_EVENT_BATCH_SIZE in prod\"}",
+      "accessible": false
+    },
+    "INSTRUMENT_REGISTRY_EVENT_ORDERING_GUARANTEE": {
+      "key": "INSTRUMENT_REGISTRY_EVENT_ORDERING_GUARANTEE",
+      "status": "FAILED",
+      "error": "HTTP 404: {\"detail\":\"Secret not found: INSTRUMENT_REGISTRY_EVENT_ORDERING_GUARANTEE in prod\"}",
+      "accessible": false
+    },
+    "INSTRUMENT_REGISTRY_DLQ_RETENTION_HOURS": {
+      "key": "INSTRUMENT_REGISTRY_DLQ_RETENTION_HOURS",
+      "status": "FAILED",
+      "error": "HTTP 404: {\"detail\":\"Secret not found: INSTRUMENT_REGISTRY_DLQ_RETENTION_HOURS in prod\"}",
+      "accessible": false
+    }
+  },
+  "ready_for_implementation": false
+}
