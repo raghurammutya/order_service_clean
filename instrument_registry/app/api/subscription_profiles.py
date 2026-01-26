@@ -133,9 +133,19 @@ class ConflictResponse(BaseModel):
 # DEPENDENCY INJECTION
 # =========================================
 
+def get_config_client() -> ConfigClient:
+    """Get shared global config client instance"""
+    from main import config_client
+    return config_client
+
+def get_monitoring_service() -> MonitoringService:
+    """Get shared global monitoring service instance"""
+    from main import monitoring_service
+    return monitoring_service
+
 async def get_subscription_service(
-    config_client: ConfigClient = Depends(),
-    monitoring: MonitoringService = Depends()
+    config_client: ConfigClient = Depends(get_config_client),
+    monitoring: MonitoringService = Depends(get_monitoring_service)
 ) -> SubscriptionProfileService:
     """Dependency injection for subscription profile service"""
     # Get database URL from config service
