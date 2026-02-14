@@ -1,0 +1,15 @@
+node_modules
+.codex/log/
+.codex/sessions/
+.docker/buildx/refs/
+.local/lib/python3.12/site-packages/torch/include/ATen/ops/
+
+# Local secret files (never commit)
+secrets.dev.enc
+secrets.staging.enc
+secrets.test.enc
+.config_service_backup.env
+kibana-token.txt
+
+# Generated secret backup archives
+backups/secrets/
