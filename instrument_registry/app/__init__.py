@@ -1,0 +1,1 @@
+"""Instrument Registry App Module"""
